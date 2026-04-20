@@ -294,6 +294,13 @@ if __name__ == '__main__':
         base_dataset_test = EMNIST
         dataset_kwargs = {"split": split, "train": True}
         dataset_kwargs_test = {"split": split, "train": False}
+    elif dataset_name == "FASHION":
+        num_classes = 10
+        mean, std = (0.5,), (0.5,)
+        base_dataset_train = datasets.FashionMNIST
+        base_dataset_test = datasets.FashionMNIST
+        dataset_kwargs = {"train": True}
+        dataset_kwargs_test = {"train": False}
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
