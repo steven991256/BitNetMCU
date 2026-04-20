@@ -15,6 +15,9 @@ import yaml
 from torchsummary import summary
 import importlib
 from models import MaskingLayer
+from sklearn.metrics import confusion_matrix, f1_score, classification_report, roc_auc_score
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 #----------------------------------------------
 # BitNetMCU training
@@ -134,6 +137,9 @@ def train_model(model, device, hyperparameters, train_data, test_data):
 
     # Train the CNN
     for epoch in range(num_epochs):
+        all_preds = []
+        all_labels_list = []
+        all_probs = []
         correct = 0
         train_loss=[]
         start_time = time.time()
@@ -163,6 +169,7 @@ def train_model(model, device, hyperparameters, train_data, test_data):
                 optimizer.zero_grad()
                 outputs = model(images)
                 _, predicted = torch.max(outputs.data, 1)
+
                 loss = criterion(outputs, labels)
                 if epoch < hyperparameters['prune_epoch']:
                     loss += add_mask_regularization(model, hyperparameters["lambda_l1"])
@@ -190,12 +197,19 @@ def train_model(model, device, hyperparameters, train_data, test_data):
                 labels = all_test_labels[i * batch_size:(i + 1) * batch_size]
 
                 outputs = model(images)
-                _, predicted = torch.max(outputs.data, 1)
+                probs = torch.softmax(outputs, dim=1)
+                _, predicted = torch.max(probs, dim=1)
+                
+                all_preds.extend(predicted.cpu().numpy())
+                all_labels_list.extend(labels.cpu().numpy())
+                all_probs.extend(probs.cpu().numpy())
+                
                 loss = criterion(outputs, labels)
                 test_loss.append(loss.item())
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
 
+            
         # Log positive activations
         activity=log_positive_activations(model, writer, epoch, all_test_images, batch_size)
 
@@ -204,8 +218,32 @@ def train_model(model, device, hyperparameters, train_data, test_data):
 
         testaccuracy = correct / total * 100
 
+
+        cm = confusion_matrix(all_labels_list, all_preds)
+        f1 = f1_score(all_labels_list, all_preds, average='macro')
+
+        print("Confusion Matrix:\n", cm)
+        print("F1 Score:", f1)
         print(f'Epoch [{epoch+1}/{num_epochs}], LTrain:{np.mean(train_loss):.6f} ATrain: {trainaccuracy:.2f}% LTest:{np.mean(test_loss):.6f} ATest: {correct / total * 100:.2f}% Time[s]: {epoch_time:.2f} Act: {activity*100:.1f}% w_clip/entropy[bits]: ', end='')
 
+        try:
+                roc_auc = roc_auc_score(all_labels_list, all_probs, multi_class='ovr')
+                print("ROC AUC:", roc_auc)
+        except:
+                print("ROC not available")
+
+
+        TP = np.diag(cm)
+        FP = cm.sum(axis=0) - TP
+        FN = cm.sum(axis=1) - TP
+        TN = cm.sum() - (TP + FP + FN)
+
+        sensitivity = TP / (TP + FN)
+        specificity = TN / (TN + FP)
+
+        print("Sensitivity:", sensitivity)
+        print("Specificity:", specificity)
+        
         # update clipping scalars once per epoch
         totalbits = 0
         for i, layer in enumerate(model.modules()):
