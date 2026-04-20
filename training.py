@@ -225,12 +225,13 @@ def train_model(model, device, hyperparameters, train_data, test_data):
         print("Confusion Matrix:\n", cm)
         print("F1 Score:", f1)
         print(f'Epoch [{epoch+1}/{num_epochs}], LTrain:{np.mean(train_loss):.6f} ATrain: {trainaccuracy:.2f}% LTest:{np.mean(test_loss):.6f} ATest: {correct / total * 100:.2f}% Time[s]: {epoch_time:.2f} Act: {activity*100:.1f}% w_clip/entropy[bits]: ', end='')
-
+        print("\nClassification Report:\n")
+        print(classification_report(all_labels_list, all_preds))
         try:
-                roc_auc = roc_auc_score(all_labels_list, all_probs, multi_class='ovr')
-                print("ROC AUC:", roc_auc)
+            roc_auc = roc_auc_score(all_labels_list, all_probs, multi_class='ovr')
+            print("ROC AUC:", roc_auc)
         except:
-                print("ROC not available")
+            print("ROC not available")
 
 
         TP = np.diag(cm)
