@@ -353,7 +353,6 @@ if __name__ == '__main__':
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
     transform = transforms.Compose([
-        transforms.Grayscale(num_output_channels=1),
         transforms.Resize((16, 16)),
         transforms.Grayscale(num_output_channels=1),
         transforms.ToTensor(),
