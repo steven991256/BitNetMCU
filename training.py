@@ -1,3 +1,5 @@
+import medmnist
+from medmnist import PathMNIST
 import torch, torch.nn as nn, torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
@@ -340,11 +342,18 @@ if __name__ == '__main__':
         base_dataset_test = datasets.FashionMNIST
         dataset_kwargs = {"train": True}
         dataset_kwargs_test = {"train": False}
+    elif dataset_name == "PATHMNIST":
+        num_classes = 9
+        mean, std = (0.5, 0.5, 0.5), (0.5, 0.5, 0.5)
+        base_dataset_train = PathMNIST
+        base_dataset_test = PathMNIST
+        dataset_kwargs = {"split": "train"}
+        dataset_kwargs_test = {"split": "test"}
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
     transform = transforms.Compose([
-        transforms.Resize((16, 16)),
+        transforms.Resize((28, 28)),
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
     ])
@@ -360,7 +369,7 @@ if __name__ == '__main__':
             transforms.RandomApply([
                 transforms.ElasticTransform(alpha=40.0, sigma=4.0)
             ], p=hyperparameters["elastictransformprobability"]),
-            transforms.Resize((16, 16)),
+            transforms.Resize((28, 28)),
             transforms.ToTensor(),
             transforms.Normalize(mean, std)
         ])
@@ -375,7 +384,7 @@ if __name__ == '__main__':
     if hasattr(model, 'to'):
         model = model.to(device)
 
-    summary(model, input_size=(1, 16, 16))  # Assuming the input size is (1, 16, 16)
+    summary(model, input_size=(3, 28, 28))  # Assuming the input size is (1, 16, 16)
 
     print('training...')
     train_model(model, device, hyperparameters, train_data, test_data)
