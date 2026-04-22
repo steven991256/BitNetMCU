@@ -18,6 +18,8 @@ from models import MaskingLayer
 from sklearn.metrics import confusion_matrix, f1_score, classification_report, roc_auc_score
 import matplotlib.pyplot as plt
 import seaborn as sns
+import medmnist
+from medmnist import PathMNIST
 
 #----------------------------------------------
 # BitNetMCU training
@@ -340,11 +342,20 @@ if __name__ == '__main__':
         base_dataset_test = datasets.FashionMNIST
         dataset_kwargs = {"train": True}
         dataset_kwargs_test = {"train": False}
+    elif dataset_name == "PATHMNIST":
+        num_classes = 9
+        mean, std = (0.5,), (0.5,)
+        base_dataset_train = PathMNIST
+        base_dataset_test = PathMNIST
+        dataset_kwargs = {"split": "train"}
+        dataset_kwargs_test = {"split": "test"}
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
     transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=1),
         transforms.Resize((16, 16)),
+        transforms.Grayscale(num_output_channels=1),
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
     ])
@@ -361,6 +372,7 @@ if __name__ == '__main__':
                 transforms.ElasticTransform(alpha=40.0, sigma=4.0)
             ], p=hyperparameters["elastictransformprobability"]),
             transforms.Resize((16, 16)),
+            transforms.Grayscale(num_output_channels=1),
             transforms.ToTensor(),
             transforms.Normalize(mean, std)
         ])
