@@ -132,58 +132,24 @@ if __name__ == '__main__':
     quantized_model = QuantizedModel(model)
     print(f'Total number of bits: {quantized_model.totalbits()} ({quantized_model.totalbits()/8/1024} kbytes)')
 
-    # Inference using the quantized model
-    print ("Verifying inference of quantized model in Python and C")
+    print("Verifying inference of quantized model in Python only")
 
-   # Initialize counter
-    counter = 0
-    correct_c = 0
-    correct_py = 0
-    mismatch = 0
+counter = 0
+correct_py = 0
 
-    test_loader2 = DataLoader(test_data, batch_size=1, shuffle=False)    
+test_loader2 = DataLoader(test_data, batch_size=1, shuffle=False)
 
-    # export_test_data_to_c(test_loader2, 'BitNetMCU_MNIST_test_data.h', num=10)
+for input_data, labels in test_loader2:
+    input_data = input_data.view(input_data.size(0), -1).cpu().numpy()
+    labels = labels.cpu().numpy()
 
-    lib = CDLL('./Bitnet_inf.dll')
+    result_py = quantized_model.inference_quantized(input_data)
+    predict_py = np.argmax(result_py, axis=1)
 
-    for input_data, labels in test_loader2:
-        input_data = input_data.view(input_data.size(0), -1).cpu().numpy()
-        labels = labels.cpu().numpy()
+    if predict_py[0] == labels[0]:
+        correct_py += 1
 
-        scale = 127.0 / np.maximum(np.abs(input_data).max(axis=-1, keepdims=True), 1e-5)
-        scaled_data = np.round(input_data * scale).clip(-128, 127) 
+    counter += 1
 
-        # Create a pointer to the ctypes array
-        input_data_pointer = (c_int8 * len(scaled_data.flatten()))(*scaled_data.astype(np.int8).flatten())
-
-        lib.Inference.argtypes = [POINTER(c_int8)]
-        lib.Inference.restype = c_uint32
-
-        # Inference C
-        result_c = lib.Inference(input_data_pointer)
-
-        # Inference Python
-        result_py = quantized_model.inference_quantized(input_data)
-        predict_py = np.argmax(result_py, axis=1)
-
-        # activations = quantized_model.get_activations(input_data)
-
-        if (result_c == labels[0]):
-            correct_c += 1
-
-        if (predict_py[0] == labels[0]):
-            correct_py += 1
-
-        if (result_c != predict_py[0]):
-            print(f'{counter:5} Mismatch between inference engines found. Prediction C: {result_c} Prediction Python: {predict_py[0]} True: {labels[0]}')
-            mismatch +=1
-
-        counter += 1
-
-    print("size of test data:", counter)
-    print(f'Mispredictions C: {counter - correct_c} Py: {counter - correct_py}')
-    print('Overall accuracy C:', correct_c / counter * 100, '%')
-    print('Overall accuracy Python:', correct_py / counter * 100, '%')
-    
-    print(f'Mismatches between engines: {mismatch} ({mismatch/counter*100}%)')
+print("size of test data:", counter)
+print("Overall accuracy Python:", correct_py / counter * 100, "%")
