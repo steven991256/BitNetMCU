@@ -219,7 +219,7 @@ def train_model(model, device, hyperparameters, train_data, test_data):
                 _, predicted = torch.max(probs, dim=1)
                 
                 all_preds.extend(predicted.cpu().numpy())
-                all_labels_list.extend(labels.cpu().numpy().reshape(-1)))
+                all_labels_list.extend(labels.cpu().numpy().reshape(-1))
                 all_probs.extend(probs.cpu().numpy())
                 
                 loss = criterion(outputs, labels)
