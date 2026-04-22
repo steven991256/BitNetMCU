@@ -45,6 +45,8 @@ def load_model(model_name, params):
         )
         if 'cnn_width' in params:
             kwargs['cnn_width'] = params['cnn_width']
+        if 'num_classes' in params:
+            kwargs['num_classes'] = params['num_classes']
         return model_class(**kwargs)
     except AttributeError:
         raise ValueError(f"Model {model_name} not found in models.py")
@@ -105,7 +107,9 @@ if __name__ == '__main__':
         dataset_cls = PathMNIST
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
-
+        
+    hyperparameters['num_classes'] = num_classes
+    
     transform = transforms.Compose([
         transforms.Resize((16, 16)),
         transforms.Grayscale(num_output_channels=1),
