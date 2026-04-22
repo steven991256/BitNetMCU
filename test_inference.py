@@ -134,22 +134,22 @@ if __name__ == '__main__':
 
     print("Verifying inference of quantized model in Python only")
 
-counter = 0
-correct_py = 0
+    counter = 0
+    correct_py = 0
 
-test_loader2 = DataLoader(test_data, batch_size=1, shuffle=False)
+    test_loader2 = DataLoader(test_data, batch_size=1, shuffle=False)
 
-for input_data, labels in test_loader2:
-    input_data = input_data.view(input_data.size(0), -1).cpu().numpy()
-    labels = labels.cpu().numpy()
+    for input_data, labels in test_loader2:
+        input_data = input_data.view(input_data.size(0), -1).cpu().numpy()
+        labels = labels.cpu().numpy()
 
-    result_py = quantized_model.inference_quantized(input_data)
-    predict_py = np.argmax(result_py, axis=1)
+        result_py = quantized_model.inference_quantized(input_data)
+        predict_py = np.argmax(result_py, axis=1)
 
-    if predict_py[0] == labels[0]:
-        correct_py += 1
+        if predict_py[0] == labels[0]:
+            correct_py += 1
 
-    counter += 1
+        counter += 1
 
-print("size of test data:", counter)
-print("Overall accuracy Python:", correct_py / counter * 100, "%")
+    print("size of test data:", counter)
+    print("Overall accuracy Python:", correct_py / counter * 100, "%")
