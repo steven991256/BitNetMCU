@@ -107,7 +107,8 @@ if __name__ == '__main__':
     
     print('Loading model...')    
     try:
-        model.load_state_dict(torch.load(f'modeldata/{runname}.pth'))
+        # model.load_state_dict(torch.load(f'modeldata/{runname}.pth'))
+        model.load_state_dict(torch.load(f'modeldata/{runname}.pth', map_location=torch.device('cpu')))
     except FileNotFoundError:
         print(f"The file 'modeldata/{runname}.pth' does not exist.")
         exit()
