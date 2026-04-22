@@ -26,7 +26,17 @@ import seaborn as sns
 #----------------------------------------------
 
 def create_run_name(hyperparameters):
-    runname = hyperparameters["runtag"] + '_' + hyperparameters["model"] + ('_Aug' if hyperparameters["augmentation"] else '') + '_BitMnist_' + hyperparameters["QuantType"] + "_width" + str(hyperparameters["network_width1"]) + "_" + str(hyperparameters["network_width2"]) + "_" + str(hyperparameters["network_width3"])  + "_epochs" + str(hyperparameters["num_epochs"])
+    runname = (
+        hyperparameters["runtag"] + '_' +
+        hyperparameters["model"] + '_' +
+        hyperparameters["dataset"] +
+        ('_Aug' if hyperparameters["augmentation"] else '') +
+        '_BitMnist_' + hyperparameters["QuantType"] +
+        "_width" + str(hyperparameters["network_width1"]) +
+        "_" + str(hyperparameters["network_width2"]) +
+        "_" + str(hyperparameters["network_width3"]) +
+        "_epochs" + str(hyperparameters["num_epochs"])
+    )
     hyperparameters["runname"] = runname
     return runname
 
@@ -149,6 +159,7 @@ def train_model(model, device, hyperparameters, train_data, test_data):
         if hyperparameters["augmentation"]:
             for i, (images, labels) in enumerate(train_loader):
                 images, labels = images.to(device), labels.to(device)
+                labels = labels.view(-1).long()
                 optimizer.zero_grad()
                 outputs = model(images)
                 _, predicted = torch.max(outputs.data, 1)
@@ -167,7 +178,7 @@ def train_model(model, device, hyperparameters, train_data, test_data):
             for i in range(len(indices) // batch_size):
                 batch_indices = indices[i * batch_size:(i + 1) * batch_size]
                 images = torch.stack([all_train_images[i] for i in batch_indices])
-                labels = torch.stack([all_train_labels[i] for i in batch_indices])
+                labels = torch.stack([all_train_labels[i] for i in batch_indices]).view(-1).long()
                 optimizer.zero_grad()
                 outputs = model(images)
                 _, predicted = torch.max(outputs.data, 1)
@@ -196,14 +207,14 @@ def train_model(model, device, hyperparameters, train_data, test_data):
         with torch.no_grad():
             for i in range(len(all_test_images) // batch_size):
                 images = all_test_images[i * batch_size:(i + 1) * batch_size]
-                labels = all_test_labels[i * batch_size:(i + 1) * batch_size]
+                labels = all_test_labels[i * batch_size:(i + 1) * batch_size].view(-1).long()
 
                 outputs = model(images)
                 probs = torch.softmax(outputs, dim=1)
                 _, predicted = torch.max(probs, dim=1)
                 
                 all_preds.extend(predicted.cpu().numpy())
-                all_labels_list.extend(labels.cpu().numpy())
+                all_labels_list.extend(labels.cpu().numpy().reshape(-1))
                 all_probs.extend(probs.cpu().numpy())
                 
                 loss = criterion(outputs, labels)
