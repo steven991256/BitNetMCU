@@ -1,3 +1,5 @@
+import medmnist
+from medmnist import PathMNIST
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
@@ -15,7 +17,17 @@ import importlib
 #---------------------------------------------
 
 def create_run_name(hyperparameters):
-    runname = hyperparameters["runtag"] + '_' + hyperparameters["model"] + ('_Aug' if hyperparameters["augmentation"] else '') + '_BitMnist_' + hyperparameters["QuantType"] + "_width" + str(hyperparameters["network_width1"]) + "_" + str(hyperparameters["network_width2"]) + "_" + str(hyperparameters["network_width3"])  + "_epochs" + str(hyperparameters["num_epochs"])
+    runname = (
+        hyperparameters["runtag"] + '_' +
+        hyperparameters["model"] + '_' +
+        hyperparameters["dataset"] +
+        ('_Aug' if hyperparameters["augmentation"] else '') +
+        '_BitMnist_' + hyperparameters["QuantType"] +
+        "_width" + str(hyperparameters["network_width1"]) +
+        "_" + str(hyperparameters["network_width2"]) +
+        "_" + str(hyperparameters["network_width3"]) +
+        "_epochs" + str(hyperparameters["num_epochs"])
+    )
     hyperparameters["runname"] = runname
     return runname
 
@@ -88,17 +100,27 @@ if __name__ == '__main__':
     elif dataset_name == "FASHION":
         mean, std = (0.2860,), (0.3530,)
         dataset_cls = datasets.FashionMNIST
+    elif dataset_name == "PATHMNIST":
+        mean, std = (0.5,), (0.5,)
+        dataset_cls = PathMNIST
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
     transform = transforms.Compose([
         transforms.Resize((16, 16)),
+        transforms.Grayscale(num_output_channels=1),
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
     ])
 
-    train_data = dataset_cls(root='data', train=True, transform=transform, download=True)
-    test_data = dataset_cls(root='data', train=False, transform=transform, download=True)
+    if dataset_name == "PATHMNIST":
+        train_data = dataset_cls(root='data', split='train', transform=transform, download=True)
+        test_data = dataset_cls(root='data', split='test', transform=transform, download=True)
+    else:
+        train_data = dataset_cls(root='data', train=True, transform=transform, download=True)
+        test_data = dataset_cls(root='data', train=False, transform=transform, download=True)
+    #train_data = dataset_cls(root='data', train=True, transform=transform, download=True)
+    #test_data = dataset_cls(root='data', train=False, transform=transform, download=True)
     
     # Create data loaders
     test_loader = DataLoader(test_data, batch_size=hyperparameters["batch_size"], shuffle=False)
@@ -108,7 +130,8 @@ if __name__ == '__main__':
     print('Loading model...')    
     try:
         # model.load_state_dict(torch.load(f'modeldata/{runname}.pth'))
-        model.load_state_dict(torch.load(f'modeldata/{runname}.pth', map_location=torch.device('cpu')))
+        #model.load_state_dict(torch.load(f'modeldata/{runname}.pth', map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(f'modeldata/{runname}.pth', map_location=device))
     except FileNotFoundError:
         print(f"The file 'modeldata/{runname}.pth' does not exist.")
         exit()
