@@ -97,12 +97,15 @@ if __name__ == '__main__':
     dataset_name = hyperparameters.get("dataset", "MNIST").upper()
 
     if dataset_name == "MNIST":
+        num_classes = 10
         mean, std = (0.1307,), (0.3081,)
         dataset_cls = datasets.MNIST
     elif dataset_name == "FASHION":
+        num_classes = 10
         mean, std = (0.2860,), (0.3530,)
         dataset_cls = datasets.FashionMNIST
     elif dataset_name == "PATHMNIST":
+        num_classes = 9
         mean, std = (0.5,), (0.5,)
         dataset_cls = PathMNIST
     else:
