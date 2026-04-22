@@ -25,8 +25,23 @@ from medmnist import PathMNIST
 # BitNetMCU training
 #----------------------------------------------
 
+#def create_run_name(hyperparameters):
+    #runname = hyperparameters["runtag"] + '_' + hyperparameters["model"] + ('_Aug' if hyperparameters["augmentation"] else '') + '_BitMnist_' + hyperparameters["QuantType"] + "_width" + str(hyperparameters["network_width1"]) + "_" + str(hyperparameters["network_width2"]) + "_" + str(hyperparameters["network_width3"])  + "_epochs" + str(hyperparameters["num_epochs"])
+    #hyperparameters["runname"] = runname
+    #return runname
+
 def create_run_name(hyperparameters):
-    runname = hyperparameters["runtag"] + '_' + hyperparameters["model"] + ('_Aug' if hyperparameters["augmentation"] else '') + '_BitMnist_' + hyperparameters["QuantType"] + "_width" + str(hyperparameters["network_width1"]) + "_" + str(hyperparameters["network_width2"]) + "_" + str(hyperparameters["network_width3"])  + "_epochs" + str(hyperparameters["num_epochs"])
+    runname = (
+        hyperparameters["runtag"] + '_' +
+        hyperparameters["model"] + '_' +
+        hyperparameters["dataset"] +
+        ('_Aug' if hyperparameters["augmentation"] else '') +
+        '_BitMnist_' + hyperparameters["QuantType"] +
+        "_width" + str(hyperparameters["network_width1"]) +
+        "_" + str(hyperparameters["network_width2"]) +
+        "_" + str(hyperparameters["network_width3"]) +
+        "_epochs" + str(hyperparameters["num_epochs"])
+    )
     hyperparameters["runname"] = runname
     return runname
 
