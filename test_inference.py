@@ -79,14 +79,27 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load the MNIST dataset
+
+    dataset_name = hyperparameters.get("dataset", "MNIST").upper()
+
+    if dataset_name == "MNIST":
+        mean, std = (0.1307,), (0.3081,)
+        dataset_cls = datasets.MNIST
+    elif dataset_name == "FASHION":
+        mean, std = (0.2860,), (0.3530,)
+        dataset_cls = datasets.FashionMNIST
+    else:
+        raise ValueError(f"Unsupported dataset: {dataset_name}")
+
     transform = transforms.Compose([
-        transforms.Resize((16, 16)),  # Resize images to 16x16
+        transforms.Resize((16, 16)),
         transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,))
+        transforms.Normalize(mean, std)
     ])
 
-    train_data = datasets.MNIST(root='data', train=True, transform=transform, download=True)
-    test_data = datasets.MNIST(root='data', train=False, transform=transform)
+    train_data = dataset_cls(root='data', train=True, transform=transform, download=True)
+    test_data = dataset_cls(root='data', train=False, transform=transform, download=True)
+    
     # Create data loaders
     test_loader = DataLoader(test_data, batch_size=hyperparameters["batch_size"], shuffle=False)
 
