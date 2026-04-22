@@ -3,21 +3,31 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import numpy as np
 from BitNetMCU import QuantizedModel
-# from models import FCMNIST
 from ctypes import CDLL, c_uint32, c_int8, c_uint8, POINTER
 import argparse
 import yaml
 import importlib
+import medmnist
+from medmnist import PathMNIST
 
 # Export quantized model from saved checkpoint
-# cpldcpu 2024-04-14
-# Note: Hyperparameters are used to generated the filename
-#---------------------------------------------
+# Note: Hyperparameters are used to generate the filename
 
 def create_run_name(hyperparameters):
-    runname = hyperparameters["runtag"] + '_' + hyperparameters["model"] + ('_Aug' if hyperparameters["augmentation"] else '') + '_BitMnist_' + hyperparameters["QuantType"] + "_width" + str(hyperparameters["network_width1"]) + "_" + str(hyperparameters["network_width2"]) + "_" + str(hyperparameters["network_width3"])  + "_epochs" + str(hyperparameters["num_epochs"])
+    runname = (
+        hyperparameters["runtag"] + '_' +
+        hyperparameters["model"] + '_' +
+        hyperparameters["dataset"] +
+        ('_Aug' if hyperparameters["augmentation"] else '') +
+        '_BitMnist_' + hyperparameters["QuantType"] +
+        "_width" + str(hyperparameters["network_width1"]) +
+        "_" + str(hyperparameters["network_width2"]) +
+        "_" + str(hyperparameters["network_width3"]) +
+        "_epochs" + str(hyperparameters["num_epochs"])
+    )
     hyperparameters["runname"] = runname
     return runname
+
 
 def load_model(model_name, params):
     try:
@@ -33,23 +43,26 @@ def load_model(model_name, params):
         )
         if 'cnn_width' in params:
             kwargs['cnn_width'] = params['cnn_width']
+        if 'num_classes' in params:
+            kwargs['num_classes'] = params['num_classes']
         return model_class(**kwargs)
     except AttributeError:
         raise ValueError(f"Model {model_name} not found in models.py")
-    
+
+
 def export_test_data_to_c(test_loader, filename, num=8):
     with open(filename, 'w') as f:
         for i, (input_data, labels) in enumerate(test_loader):
             if i >= num:
                 break
-            # Reshape and convert to numpy
+
             input_data = input_data.view(input_data.size(0), -1).cpu().numpy()
-            labels = labels.cpu().numpy()
+            labels = labels.view(-1).cpu().numpy()
 
             scale = 127.0 / np.maximum(np.abs(input_data).max(axis=-1, keepdims=True), 1e-5)
             scaled_data = np.round(input_data * scale).clip(-128, 127).astype(np.uint8)
 
-            f.write(f'int8_t input_data_{i}[256] = {{\n')
+            f.write(f'int8_t input_data_{i}[{scaled_data.size}] = {{\n')
             flattened_data = scaled_data.flatten()
             for k in range(0, len(flattened_data), 16):
                 f.write(', '.join(f'0x{value:02X}' for value in flattened_data[k:k+16]) + ',\n')
@@ -57,12 +70,13 @@ def export_test_data_to_c(test_loader, filename, num=8):
 
             f.write(f'uint8_t label_{i} = ' + str(labels[0]) + ';\n')
 
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Training script')
+    parser = argparse.ArgumentParser(description='Inference script')
     parser.add_argument('--params', type=str, help='Name of the parameter file', default='trainingparameters.yaml')
-    
+
     args = parser.parse_args()
-    
+
     if args.params:
         paramname = args.params
     else:
@@ -72,76 +86,90 @@ if __name__ == '__main__':
     with open(paramname) as f:
         hyperparameters = yaml.safe_load(f)
 
-    # main
-    runname= create_run_name(hyperparameters)
+    runname = create_run_name(hyperparameters)
     print(runname)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Load the MNIST dataset
-
     dataset_name = hyperparameters.get("dataset", "MNIST").upper()
 
     if dataset_name == "MNIST":
+        num_classes = 10
         mean, std = (0.1307,), (0.3081,)
         dataset_cls = datasets.MNIST
+
     elif dataset_name == "FASHION":
+        num_classes = 10
         mean, std = (0.2860,), (0.3530,)
         dataset_cls = datasets.FashionMNIST
+
+    elif dataset_name == "PATHMNIST":
+        num_classes = 9
+        mean, std = (0.5, 0.5, 0.5), (0.5, 0.5, 0.5)
+        dataset_cls = PathMNIST
+
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
+    hyperparameters['num_classes'] = num_classes
+
     transform = transforms.Compose([
-        transforms.Resize((16, 16)),
+        transforms.Resize((28, 28)),
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
     ])
 
-    train_data = dataset_cls(root='data', train=True, transform=transform, download=True)
-    test_data = dataset_cls(root='data', train=False, transform=transform, download=True)
-    
-    # Create data loaders
+    if dataset_name == "PATHMNIST":
+        train_data = dataset_cls(root='data', split='train', transform=transform, download=True)
+        test_data = dataset_cls(root='data', split='test', transform=transform, download=True)
+    else:
+        train_data = dataset_cls(root='data', train=True, transform=transform, download=True)
+        test_data = dataset_cls(root='data', train=False, transform=transform, download=True)
+
     test_loader = DataLoader(test_data, batch_size=hyperparameters["batch_size"], shuffle=False)
 
     model = load_model(hyperparameters["model"], hyperparameters).to(device)
-    
-    print('Loading model...')    
+
+    print('Loading model...')
     try:
-        # model.load_state_dict(torch.load(f'modeldata/{runname}.pth'))
-        model.load_state_dict(torch.load(f'modeldata/{runname}.pth', map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(f'modeldata/{runname}.pth', map_location=device))
     except FileNotFoundError:
         print(f"The file 'modeldata/{runname}.pth' does not exist.")
         exit()
 
+    model.eval()
+
     print('Inference using the original model...')
     correct = 0
     total = 0
-    test_loss = []
+
     with torch.no_grad():
         for images, labels in test_loader:
-            images, labels = images.to(device), labels.to(device)        
+            images, labels = images.to(device), labels.to(device)
+            labels = labels.view(-1).long()
+
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
+
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+
     testaccuracy = correct / total * 100
-    print(f'Accuracy/Test of trained model: {testaccuracy} %')
+    print(f'Accuracy/Test of trained model: {testaccuracy:.2f} %')
 
     print('Quantizing model...')
-    # Quantize the model
     quantized_model = QuantizedModel(model)
-    print(f'Total number of bits: {quantized_model.totalbits()} ({quantized_model.totalbits()/8/1024} kbytes)')
+    print(f'Total number of bits: {quantized_model.totalbits()} ({quantized_model.totalbits()/8/1024:.2f} kbytes)')
 
     print("Verifying inference of quantized model in Python only")
 
     counter = 0
     correct_py = 0
-
     test_loader2 = DataLoader(test_data, batch_size=1, shuffle=False)
 
     for input_data, labels in test_loader2:
         input_data = input_data.view(input_data.size(0), -1).cpu().numpy()
-        labels = labels.cpu().numpy()
+        labels = labels.view(-1).cpu().numpy()
 
         result_py = quantized_model.inference_quantized(input_data)
         predict_py = np.argmax(result_py, axis=1)
