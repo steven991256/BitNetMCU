@@ -360,9 +360,9 @@ if __name__ == '__main__':
     ])
 
     if dataset_name == "CUSTOM":
-    train_data = ImageFolder(
-        root=f"{data_root}/train",
-        transform=transform
+        train_data = ImageFolder(
+            root=f"{data_root}/train",
+            transform=transform
     )
 
     test_data = ImageFolder(
@@ -390,14 +390,14 @@ if __name__ == '__main__':
         )
 
     if hyperparameters["augmentation"]:
-    # Data augmentation for training data
-    augmented_transform = transforms.Compose([
-        transforms.Grayscale(num_output_channels=1),
-        transforms.RandomRotation(degrees=hyperparameters["rotation1"]),
-        transforms.RandomAffine(
-            degrees=hyperparameters["rotation2"],
-            translate=(0.1, 0.1),
-            scale=(0.9, 1.1)
+        # Data augmentation for training data
+        augmented_transform = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            transforms.RandomRotation(degrees=hyperparameters["rotation1"]),
+            transforms.RandomAffine(
+                degrees=hyperparameters["rotation2"],
+                translate=(0.1, 0.1),
+                scale=(0.9, 1.1)
         ),
         transforms.RandomApply([
             transforms.ElasticTransform(alpha=40.0, sigma=4.0)
