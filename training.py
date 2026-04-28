@@ -352,7 +352,7 @@ if __name__ == '__main__':
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
-    transform = transforms.Compose([
+        transform = transforms.Compose([
         transforms.Grayscale(num_output_channels=1),
         transforms.Resize((16, 16)),
         transforms.ToTensor(),
@@ -363,29 +363,29 @@ if __name__ == '__main__':
         train_data = ImageFolder(
             root=f"{data_root}/train",
             transform=transform
-    )
+        )
 
-    test_data = ImageFolder(
-        root=f"{data_root}/test",
-        transform=transform
-    )
+        test_data = ImageFolder(
+            root=f"{data_root}/test",
+            transform=transform
+        )
 
-    print("Custom generated dataset loaded.")
-    print("Classes:", train_data.classes)
-    print("Class mapping:", train_data.class_to_idx)
+        print("Custom generated dataset loaded.")
+        print("Classes:", train_data.classes)
+        print("Class mapping:", train_data.class_to_idx)
 
     else:
         train_data = base_dataset_train(
-            root='data', 
-            transform=transform, 
-            download=True, 
+            root='data',
+            transform=transform,
+            download=True,
             **dataset_kwargs
         )
-        
+
         test_data = base_dataset_test(
-            root='data', 
-            transform=transform, 
-            download=True, 
+            root='data',
+            transform=transform,
+            download=True,
             **dataset_kwargs_test
         )
 
@@ -398,31 +398,30 @@ if __name__ == '__main__':
                 degrees=hyperparameters["rotation2"],
                 translate=(0.1, 0.1),
                 scale=(0.9, 1.1)
-        ),
-        transforms.RandomApply([
-            transforms.ElasticTransform(alpha=40.0, sigma=4.0)
-        ], p=hyperparameters["elastictransformprobability"]),
-        transforms.Resize((16, 16)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean, std)
-    ])
+            ),
+            transforms.RandomApply([
+                transforms.ElasticTransform(alpha=40.0, sigma=4.0)
+            ], p=hyperparameters["elastictransformprobability"]),
+            transforms.Resize((16, 16)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std)
+        ])
 
-    if dataset_name == "CUSTOM":
-        augmented_train_data = ImageFolder(
-            root=f"{data_root}/train",
-            transform=augmented_transform
-        )
-    else:
-        augmented_train_data = base_dataset_train(
-            root='data',
-            transform=augmented_transform,
-            download=True,
-            **dataset_kwargs
-        )
+        if dataset_name == "CUSTOM":
+            augmented_train_data = ImageFolder(
+                root=f"{data_root}/train",
+                transform=augmented_transform
+            )
+        else:
+            augmented_train_data = base_dataset_train(
+                root='data',
+                transform=augmented_transform,
+                download=True,
+                **dataset_kwargs
+            )
 
-    train_data = ConcatDataset([train_data, augmented_train_data])
-
-
+        train_data = ConcatDataset([train_data, augmented_train_data])
+        
     # Pass num_classes dynamically to model
     hyperparameters['num_classes'] = num_classes
     model = load_model(hyperparameters["model"], {**hyperparameters, 'num_classes': num_classes})
