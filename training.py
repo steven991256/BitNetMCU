@@ -436,4 +436,5 @@ if __name__ == '__main__':
     train_model(model, device, hyperparameters, train_data, test_data)
 
     print('saving model...')
+    os.makedirs("modeldata", exist_ok=True)
     torch.save(model.state_dict(), f'modeldata/{runname}.pth')
