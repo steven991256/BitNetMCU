@@ -109,9 +109,9 @@ if __name__ == '__main__':
     ])
 
         if dataset_name == "CUSTOM":
-        train_data = ImageFolder(
-            root=f"{data_root}/train",
-            transform=transform
+            train_data = ImageFolder(
+                root=f"{data_root}/train",
+                transform=transform
         )
 
         test_data = ImageFolder(
