@@ -107,35 +107,37 @@ if __name__ == '__main__':
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
     ])
-    if dataset_name == "CUSTOM":
+
+        if dataset_name == "CUSTOM":
         train_data = ImageFolder(
             root=f"{data_root}/train",
-                transform=transform
-    )
+            transform=transform
+        )
 
-    test_data = ImageFolder(
-        root=f"{data_root}/test",
-        transform=transform
-    )
+        test_data = ImageFolder(
+            root=f"{data_root}/test",
+            transform=transform
+        )
 
-    print("Custom dataset loaded.")
-    print("Classes:", test_data.classes)
-    print("Class mapping:", test_data.class_to_idx)
+        print("Custom dataset loaded.")
+        print("Classes:", test_data.classes)
+        print("Class mapping:", test_data.class_to_idx)
 
-else:
-    train_data = dataset_cls(
-        root='data',
-        train=True,
-        transform=transform,
-        download=True
-    )
+    else:
+        train_data = dataset_cls(
+            root='data',
+            train=True,
+            transform=transform,
+            download=True
+        )
 
-    test_data = dataset_cls(
-        root='data',
-        train=False,
-        transform=transform,
-        download=True
-    )
+        test_data = dataset_cls(
+            root='data',
+            train=False,
+            transform=transform,
+            download=True
+        )
+    
 
     # Create data loaders
     test_loader = DataLoader(test_data, batch_size=hyperparameters["batch_size"], shuffle=False)
