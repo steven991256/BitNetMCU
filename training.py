@@ -19,6 +19,7 @@ from models import MaskingLayer
 from sklearn.metrics import confusion_matrix, f1_score, classification_report, roc_auc_score
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 
 #----------------------------------------------
 # BitNetMCU training
@@ -352,7 +353,7 @@ if __name__ == '__main__':
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
-        transform = transforms.Compose([
+    transform = transforms.Compose([
         transforms.Grayscale(num_output_channels=1),
         transforms.Resize((16, 16)),
         transforms.ToTensor(),
