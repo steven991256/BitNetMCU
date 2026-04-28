@@ -1,5 +1,6 @@
 import torch, torch.nn as nn, torch.optim as optim
 from torchvision import datasets, transforms
+from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, CosineAnnealingWarmRestarts
 import numpy as np
@@ -65,7 +66,7 @@ def log_positive_activations(model, writer, epoch, all_test_images, batch_size):
 
     # Run a forward pass to trigger hooks
     with torch.no_grad():
-        for i in range(len(all_test_images) // batch_size):
+        for i in range((len(all_test_images) + batch_size - 1) // batch_size):
             images = all_test_images[i * batch_size:(i + 1) * batch_size]
             model(images)
 
@@ -192,7 +193,7 @@ def train_model(model, device, hyperparameters, train_data, test_data):
         total = 0
         test_loss = []
         with torch.no_grad():
-            for i in range(len(all_test_images) // batch_size):
+            for i in range((len(all_test_images) + batch_size - 1) // batch_size):
                 images = all_test_images[i * batch_size:(i + 1) * batch_size]
                 labels = all_test_labels[i * batch_size:(i + 1) * batch_size]
 
@@ -340,6 +341,14 @@ if __name__ == '__main__':
         base_dataset_test = datasets.FashionMNIST
         dataset_kwargs = {"train": True}
         dataset_kwargs_test = {"train": False}
+    elif dataset_name == "CUSTOM":
+        data_root = hyperparameters.get("data_root", "my_dataset")
+        num_classes = hyperparameters.get("num_classes", 3)
+        mean, std = (0.5,), (0.5,)
+        base_dataset_train = None
+        base_dataset_test = None
+        dataset_kwargs = {}
+        dataset_kwargs_test = {}
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
@@ -349,24 +358,57 @@ if __name__ == '__main__':
         transforms.Normalize(mean, std)
     ])
 
-    train_data = base_dataset_train(root='data', transform=transform, download=True, **dataset_kwargs)
-    test_data = base_dataset_test(root='data', transform=transform, download=True, **dataset_kwargs_test)
+    if dataset_name == "CUSTOM":
+    train_data = ImageFolder(
+        root=f"{data_root}/train",
+        transform=transform
+    )
+
+    test_data = ImageFolder(
+        root=f"{data_root}/test",
+        transform=transform
+    )
+
+    print("Custom generated dataset loaded.")
+    print("Classes:", train_data.classes)
+    print("Class mapping:", train_data.class_to_idx)
+
+    else:
+        train_data = base_dataset_train(root='data', transform=transform, download=True, **dataset_kwargs)
+        test_data = base_dataset_test(root='data', transform=transform, download=True, **dataset_kwargs_test)
 
     if hyperparameters["augmentation"]:
-        # Data augmentation for training data
-        augmented_transform = transforms.Compose([
-            transforms.RandomRotation(degrees=hyperparameters["rotation1"]),
-            transforms.RandomAffine(degrees=hyperparameters["rotation2"], translate=(0.1, 0.1), scale=(0.9, 1.1)),
-            transforms.RandomApply([
-                transforms.ElasticTransform(alpha=40.0, sigma=4.0)
-            ], p=hyperparameters["elastictransformprobability"]),
-            transforms.Resize((16, 16)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std)
-        ])
+    # Data augmentation for training data
+    augmented_transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=1),
+        transforms.RandomRotation(degrees=hyperparameters["rotation1"]),
+        transforms.RandomAffine(
+            degrees=hyperparameters["rotation2"],
+            translate=(0.1, 0.1),
+            scale=(0.9, 1.1)
+        ),
+        transforms.RandomApply([
+            transforms.ElasticTransform(alpha=40.0, sigma=4.0)
+        ], p=hyperparameters["elastictransformprobability"]),
+        transforms.Resize((16, 16)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean, std)
+    ])
 
-        augmented_train_data = base_dataset_train(root='data', transform=augmented_transform, download=True, **dataset_kwargs)
-        train_data = ConcatDataset([train_data, augmented_train_data])
+    if dataset_name == "CUSTOM":
+        augmented_train_data = ImageFolder(
+            root=f"{data_root}/train",
+            transform=augmented_transform
+        )
+    else:
+        augmented_train_data = base_dataset_train(
+            root='data',
+            transform=augmented_transform,
+            download=True,
+            **dataset_kwargs
+        )
+
+    train_data = ConcatDataset([train_data, augmented_train_data])
 
     # Pass num_classes dynamically to model
     hyperparameters['num_classes'] = num_classes
