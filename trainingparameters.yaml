@@ -52,4 +52,4 @@ network_width2: 64
 network_width3: 0
 
 # name
-runtag: "octav" # runtag is prefix for runname
+runtag: "octav_custom" # runtag is prefix for runname
