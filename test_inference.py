@@ -8,6 +8,7 @@ from ctypes import CDLL, c_uint32, c_int8, c_uint8, POINTER
 import argparse
 import yaml
 import importlib
+from torchvision.datasets import ImageFolder
 
 # Export quantized model from saved checkpoint
 # cpldcpu 2024-04-14
@@ -33,6 +34,10 @@ def load_model(model_name, params):
         )
         if 'cnn_width' in params:
             kwargs['cnn_width'] = params['cnn_width']
+        
+        if 'num_classes' in params:
+            kwargs['num_classes'] = params['num_classes']
+            
         return model_class(**kwargs)
     except AttributeError:
         raise ValueError(f"Model {model_name} not found in models.py")
@@ -88,18 +93,50 @@ if __name__ == '__main__':
     elif dataset_name == "FASHION":
         mean, std = (0.2860,), (0.3530,)
         dataset_cls = datasets.FashionMNIST
+    elif dataset_name == "CUSTOM":
+        data_root = hyperparameters.get("data_root", "my_dataset")
+        mean, std = (0.5,), (0.5,)
+        dataset_cls = None
+        hyperparameters["num_classes"] = hyperparameters.get("num_classes", 3)
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
     transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=1),
         transforms.Resize((16, 16)),
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
     ])
+    if dataset_name == "CUSTOM":
+        train_data = ImageFolder(
+            root=f"{data_root}/train",
+                transform=transform
+    )
 
-    train_data = dataset_cls(root='data', train=True, transform=transform, download=True)
-    test_data = dataset_cls(root='data', train=False, transform=transform, download=True)
-    
+    test_data = ImageFolder(
+        root=f"{data_root}/test",
+        transform=transform
+    )
+
+    print("Custom dataset loaded.")
+    print("Classes:", test_data.classes)
+    print("Class mapping:", test_data.class_to_idx)
+
+else:
+    train_data = dataset_cls(
+        root='data',
+        train=True,
+        transform=transform,
+        download=True
+    )
+
+    test_data = dataset_cls(
+        root='data',
+        train=False,
+        transform=transform,
+        download=True
+    )
+
     # Create data loaders
     test_loader = DataLoader(test_data, batch_size=hyperparameters["batch_size"], shuffle=False)
 
