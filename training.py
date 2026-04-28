@@ -353,6 +353,7 @@ if __name__ == '__main__':
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
     transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=1),
         transforms.Resize((16, 16)),
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
@@ -374,8 +375,19 @@ if __name__ == '__main__':
     print("Class mapping:", train_data.class_to_idx)
 
     else:
-        train_data = base_dataset_train(root='data', transform=transform, download=True, **dataset_kwargs)
-        test_data = base_dataset_test(root='data', transform=transform, download=True, **dataset_kwargs_test)
+        train_data = base_dataset_train(
+            root='data', 
+            transform=transform, 
+            download=True, 
+            **dataset_kwargs
+        )
+        
+        test_data = base_dataset_test(
+            root='data', 
+            transform=transform, 
+            download=True, 
+            **dataset_kwargs_test
+        )
 
     if hyperparameters["augmentation"]:
     # Data augmentation for training data
@@ -409,6 +421,7 @@ if __name__ == '__main__':
         )
 
     train_data = ConcatDataset([train_data, augmented_train_data])
+
 
     # Pass num_classes dynamically to model
     hyperparameters['num_classes'] = num_classes
