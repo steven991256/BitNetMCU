@@ -1,53 +1,61 @@
-# Description: Training parameters for the training script
+# Description: Training parameters for BitNetMCU signal classifier
 
-# Model selection
-model: 'CNNMNIST' # 'FCMNIST' or 'CNNMNST' This is the class name of the model as defined in models.py.
-# dataset: 'MNIST' # 'MNIST', or EMNIST splits: EMNIST_BALANCED, EMNIST_BYCLASS, EMNIST_BYMERGE, EMNIST_LETTERS, EMNIST_DIGITS, EMNIST_MNIST
-dataset: 'FASHION' 
+model: 'FCSignal'
+dataset: 'SIGNAL'
+
+signal_classes:
+  - idle
+  - left
+  - right
+
+signal_train_dir: 'signal_dataset/split/train'
+signal_test_dir: 'signal_dataset/split/test'
+
+samples_per_window: 64
+signal_channels: 3
+signal_normalize_scale: 16384.0
 
 # Quantization settings
-QuantType: '4bitsym' # 'Ternary', 'Binary', 'BinaryBalanced', '2bitsym', '4bit', '4bitsym', '8bit', 'None", 'FP130', 'NF4'
-NormType: 'RMS' # 'RMS', 'Lin', 'BatchNorm'
-WScale: 'PerTensor' # 'PerTensor', 'PerOutput'
+QuantType: '4bitsym'
+NormType: 'None'
+WScale: 'PerTensor'
 
-# Clipping parameters - only used for 2 bit and higher quantization
-maxw_algo: 'octav' # 'octav', 'prop' Algorithm used to calculate the clipping parameters (maximum weight)
-maxw_update_until_epoch: 60 # Update clipping parameters until this epoch, they are frozen afterwards
-maxw_quantscale: 0.25  # Used only for clipping_algo='prop'. Determines the relation between stddev of weights and max_weight
+# Clipping parameters
+maxw_algo: 'octav'
+maxw_update_until_epoch: 40
+maxw_quantscale: 0.25
 
 # Learning parameters
-num_epochs: 60  # 5, 20, 80
-batch_size: 64
-scheduler: "Cosine" # "StepLR", "Cosine", "CosineWarmRestarts"
+num_epochs: 40
+batch_size: 32
+scheduler: 'StepLR'
 learning_rate: 0.001
 
-# CosineWarmRestarts parameters
-# T_0: 5     # Period of the first restart for CosineWarmRestarts - 10+20+40 = 70 epochs, need to step in epoch 69 at minimum LR
-# T_mult: 4  # Factor increasing T_i after a restart
+lr_decay: 0.5
+step_size: 20
+halve_lr_epoch: -1
 
-# StepLR parameters
-# lr_decay: 0.1     # lr_decay and step size for StepLR
-# step_size: 10
-
-# halve_lr_epoch: 30  # Epoch at which to halve the learning rate - to be used with Cosine schedule 
+# Only used if scheduler is CosineWarmRestarts
+T_0: 5
+T_mult: 4
 
 # Data augmentation
-augmentation: True
-rotation1: 10  # rotation1 and rotation2 are used for data augmentation
-rotation2: 10
-elastictransformprobability: 0.0 # probability of applying elastic transform
+augmentation: false
+rotation1: 0
+rotation2: 0
+elastictransformprobability: 0.0
 
-# channel pruning settings. Requires "MaskLayer" in the model, otherwise these settings have no effect
-lambda_l1: 0.0005         # L1 regularization parameter for mask learning
-prune_epoch: -1           # Epoch at which to start pruning. -1 means no pruning
-prune_groupstoprune: 32   # number of groups to prune
-prune_totalgroups: 96     # total number of groups. e.g. if there are 384 channels and 96 groups, then each group has 4 channels
+# Pruning disabled for first signal test
+lambda_l1: 0.0
+prune_epoch: 9999
+prune_groupstoprune: 0
+prune_totalgroups: 0
 
 # Model parameters
-cnn_width: 64       # Width of CNN layers (CNNMNIST only)
-network_width1: 96
-network_width2: 64
+cnn_width: 0
+network_width1: 16
+network_width2: 0
 network_width3: 0
 
-# name
-runtag: "octav" # runtag is prefix for runname
+# Name
+runtag: 'Signal4bit'
