@@ -366,6 +366,18 @@ if __name__ == '__main__':
         train_data = ImageFolder(root=train_dir, transform=transform)
         test_data = ImageFolder(root=test_dir, transform=transform)
 
+        if train_data.class_to_idx != test_data.class_to_idx:
+            raise ValueError(
+                f"Olivetti training folder should contain 40 classes, "
+                f"but found {len(train_data.classes)} classes."
+            )
+
+        if len(test_data.classes) != 40:
+            raise ValueError(
+                f"Olivetti test folder should contain 40 classes, "
+                f"but found {len(test_data.classes)} classes."
+            )
+            
         print("Olivetti class mapping:", test_data.class_to_idx)
         print("Training samples:", len(train_data))
         print("Testing samples:", len(test_data))
