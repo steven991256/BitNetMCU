@@ -11,8 +11,11 @@ data_root: "D:/Olivetti_BitNetMCU_Project"
 
 train_folder: "olivetti_training_set_ONLY"
 val_folder: "olivetti_validation_set_ONLY"
+test_folder: "olivetti_FINAL_TEST_SET_LOCKED_ONLY"
 
 num_classes: 40
+
+dll_path: "./Bitnet_inf.dll"
 
 # Quantization settings
 QuantType: '4bitsym' # 'Ternary', 'Binary', 'BinaryBalanced', '2bitsym', '4bit', '4bitsym', '8bit', 'None", 'FP130', 'NF4'
