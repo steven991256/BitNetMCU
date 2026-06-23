@@ -372,7 +372,7 @@ if __name__ == '__main__':
                  "Please make sure both folders contain the same class_00 to class_39 structure."
              )
             
-        if train_data.class_to_idx != 40:
+        if len(train_data.classes) != 40:
             raise ValueError(
                 f"Olivetti training folder should contain 40 classes, "
                 f"but found {len(train_data.classes)} classes."
