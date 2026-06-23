@@ -1017,6 +1017,24 @@ if __name__ == '__main__':
             transform=transform
         )
 
+        if train_data.class_to_idx != test_data.class_to_idx:
+            raise ValueError(
+                "Class mapping mismatch between training and validation folders. "
+                "Please make sure both folders contain the same class_00 to class_39 structure."
+            )
+
+        if len(train_data.classes) != 40:
+             raise ValueError(
+                 f"Olivetti training folder should contain 40 classes, "
+                 f"but found {len(train_data.classes)} classes."
+             )
+
+        if len(test_data.classes) != 40:
+            raise ValueError(
+                f"Olivetti validation folder should contain 40 classes, "
+                f"but found {len(test_data.classes)} classes."
+            )   
+            
         print("Olivetti class mapping:", train_data.class_to_idx)
         print("Training samples:", len(train_data))
         print("Validation samples:", len(test_data))
