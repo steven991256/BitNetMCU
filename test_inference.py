@@ -367,6 +367,12 @@ if __name__ == '__main__':
         test_data = ImageFolder(root=test_dir, transform=transform)
 
         if train_data.class_to_idx != test_data.class_to_idx:
+             raise ValueError(
+                 "Class mapping mismatch between training and test folders. "
+                 "Please make sure both folders contain the same class_00 to class_39 structure."
+             )
+            
+        if train_data.class_to_idx != 40:
             raise ValueError(
                 f"Olivetti training folder should contain 40 classes, "
                 f"but found {len(train_data.classes)} classes."
