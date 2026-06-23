@@ -1024,7 +1024,7 @@ if __name__ == '__main__':
             )
 
         if len(train_data.classes) != 40:
-             raise ValueError(
+            raise ValueError(
                  f"Olivetti training folder should contain 40 classes, "
                  f"but found {len(train_data.classes)} classes."
              )
