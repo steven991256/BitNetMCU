@@ -69,6 +69,7 @@ model: GateDriverMLP
 
 train_file: /content/gate_driver_train.xlsx
 val_file: /content/gate_driver_validation.xlsx
+test_file: /content/gate_driver_test.xlsx
 label_col: label
 
 num_epochs: 80
@@ -96,3 +97,4 @@ maxw_algo: octav
 maxw_quantscale: 0.25
 
 runtag: gate_driver
+export_header: BitNetMCU_gate_driver_model.h
