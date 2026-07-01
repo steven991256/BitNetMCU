@@ -64,8 +64,43 @@
 # # name
 # runtag: "olivetti" # runtag is prefix for runname
 
+# dataset: GATE_DRIVER
+# model: GateDriverMLP
+
+# train_file: /content/gate_driver_train.xlsx
+# val_file: /content/gate_driver_validation.xlsx
+# test_file: /content/gate_driver_test.xlsx
+# label_col: label
+
+# num_epochs: 80
+# batch_size: 32
+# learning_rate: 0.001
+# scheduler: Cosine
+
+# QuantType: 4bitsym
+# NormType: RMS
+# WScale: PerTensor
+
+# network_width1: 64
+# network_width2: 32
+# network_width3: 0
+
+# dropout: 0.0
+# weight_decay: 0.0001
+
+# augmentation: false
+# lambda_l1: 0.0
+# prune_epoch: -1
+
+# maxw_update_until_epoch: 60
+# maxw_algo: octav
+# maxw_quantscale: 0.25
+
+# runtag: gate_driver
+# export_header: BitNetMCU_gate_driver_model.h
+
 dataset: GATE_DRIVER
-model: GateDriverMLP
+model: CNNMNIST
 
 train_file: /content/gate_driver_train.xlsx
 val_file: /content/gate_driver_validation.xlsx
@@ -81,6 +116,7 @@ QuantType: 4bitsym
 NormType: RMS
 WScale: PerTensor
 
+cnn_width: 64
 network_width1: 64
 network_width2: 32
 network_width3: 0
@@ -96,5 +132,5 @@ maxw_update_until_epoch: 60
 maxw_algo: octav
 maxw_quantscale: 0.25
 
-runtag: gate_driver
-export_header: BitNetMCU_gate_driver_model.h
+runtag: gate_driver_cnn
+export_header: BitNetMCU_gate_driver_cnn_model.h
