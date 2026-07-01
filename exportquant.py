@@ -1218,48 +1218,789 @@
 #     if showplots:
 #         plt.show()
 
-import torch
-import torch.nn as nn
-from torchvision import datasets, transforms
-from torchvision.datasets import ImageFolder
-from torch.utils.data import DataLoader, TensorDataset
-import numpy as np
-from datetime import datetime
-from BitNetMCU import QuantizedModel, BitLinear, BitConv2d, Activation
-import math
-import matplotlib.pyplot as plt
-import argparse
-import yaml
-import importlib
+# import torch
+# import torch.nn as nn
+# from torchvision import datasets, transforms
+# from torchvision.datasets import ImageFolder
+# from torch.utils.data import DataLoader, TensorDataset
+# import numpy as np
+# from datetime import datetime
+# from BitNetMCU import QuantizedModel, BitLinear, BitConv2d, Activation
+# import math
+# import matplotlib.pyplot as plt
+# import argparse
+# import yaml
+# import importlib
+# import os
+# import json
+# import pickle
+# import pandas as pd
+
+# try:
+#     import seaborn as sns
+# except Exception:
+#     sns = None
+
+# try:
+#     from models import MaskingLayer
+# except Exception:
+#     MaskingLayer = None
+
+
+# showplots = False
+
+
+# def create_run_name(hyperparameters):
+#     runname = (
+#         hyperparameters["runtag"] + "_"
+#         + hyperparameters["model"]
+#         + ("_Aug" if hyperparameters.get("augmentation", False) else "")
+#         + "_BitMnist_"
+#         + hyperparameters["QuantType"]
+#         + "_width"
+#         + str(hyperparameters["network_width1"]) + "_"
+#         + str(hyperparameters["network_width2"]) + "_"
+#         + str(hyperparameters["network_width3"])
+#         + "_epochs"
+#         + str(hyperparameters["num_epochs"])
+#     )
+#     hyperparameters["runname"] = runname
+#     return runname
+
+
+# def make_bitlinear(in_features, out_features, QuantType, NormType, WScale):
+#     try:
+#         return BitLinear(
+#             in_features,
+#             out_features,
+#             QuantType=QuantType,
+#             NormType=NormType,
+#             WScale=WScale
+#         )
+#     except TypeError:
+#         try:
+#             return BitLinear(
+#                 in_features,
+#                 out_features,
+#                 QuantType,
+#                 NormType,
+#                 WScale
+#             )
+#         except TypeError:
+#             print("Warning: BitLinear failed. Falling back to nn.Linear.")
+#             return nn.Linear(in_features, out_features)
+
+
+# class GateDriverMLP(nn.Module):
+#     def __init__(
+#         self,
+#         input_dim,
+#         network_width1=64,
+#         network_width2=32,
+#         network_width3=0,
+#         QuantType="4bitsym",
+#         NormType="RMS",
+#         WScale="PerTensor",
+#         num_classes=4,
+#         dropout=0.1,
+#         **kwargs
+#     ):
+#         super().__init__()
+
+#         layers = []
+
+#         layers.append(make_bitlinear(input_dim, network_width1, QuantType, NormType, WScale))
+#         layers.append(Activation())
+
+#         layers.append(make_bitlinear(network_width1, network_width2, QuantType, NormType, WScale))
+#         layers.append(Activation())
+
+#         if network_width3 and network_width3 > 0:
+#             layers.append(make_bitlinear(network_width2, network_width3, QuantType, NormType, WScale))
+#             layers.append(Activation())
+#             layers.append(make_bitlinear(network_width3, num_classes, QuantType, NormType, WScale))
+#         else:
+#             layers.append(make_bitlinear(network_width2, num_classes, QuantType, NormType, WScale))
+
+#         self.net = nn.Sequential(*layers)
+
+#     def forward(self, x):
+#         return self.net(x)
+
+
+# def load_model(model_name, params):
+#     if model_name == "GateDriverMLP":
+#         return GateDriverMLP(**params)
+
+#     try:
+#         module = importlib.import_module("models")
+#         model_class = getattr(module, model_name)
+
+#         kwargs = dict(
+#             network_width1=params["network_width1"],
+#             network_width2=params["network_width2"],
+#             network_width3=params["network_width3"],
+#             QuantType=params["QuantType"],
+#             NormType=params["NormType"],
+#             WScale=params["WScale"],
+#         )
+
+#         if "cnn_width" in params:
+#             kwargs["cnn_width"] = params["cnn_width"]
+
+#         if "num_classes" in params:
+#             kwargs["num_classes"] = params["num_classes"]
+
+#         return model_class(**kwargs)
+
+#     except AttributeError:
+#         raise ValueError(f"Model {model_name} not found in models.py or exportquant.py")
+
+
+# def load_gate_driver_test_excel(test_file, label_col="label"):
+#     if not os.path.exists(test_file):
+#         raise FileNotFoundError(f"Test Excel file not found: {test_file}")
+
+#     feature_cols_path = "modeldata/gate_driver_feature_cols.json"
+#     label_mapping_path = "modeldata/gate_driver_label_mapping.json"
+#     scaler_path = "modeldata/gate_driver_scaler.pkl"
+
+#     if not os.path.exists(feature_cols_path):
+#         raise FileNotFoundError("Missing modeldata/gate_driver_feature_cols.json. Run training.py first.")
+
+#     if not os.path.exists(label_mapping_path):
+#         raise FileNotFoundError("Missing modeldata/gate_driver_label_mapping.json. Run training.py first.")
+
+#     if not os.path.exists(scaler_path):
+#         raise FileNotFoundError("Missing modeldata/gate_driver_scaler.pkl. Run training.py first.")
+
+#     with open(feature_cols_path, "r") as f:
+#         feature_cols = json.load(f)
+
+#     with open(label_mapping_path, "r") as f:
+#         label_to_id = json.load(f)
+
+#     with open(scaler_path, "rb") as f:
+#         scaler = pickle.load(f)
+
+#     df = pd.read_excel(test_file)
+
+#     if label_col not in df.columns:
+#         raise ValueError(f"Label column '{label_col}' not found in test file.")
+
+#     missing_cols = [c for c in feature_cols if c not in df.columns]
+#     if len(missing_cols) > 0:
+#         raise ValueError(f"Test file missing required feature columns: {missing_cols}")
+
+#     X = df[feature_cols].copy()
+#     X = X.fillna(X.median(numeric_only=True))
+#     X = scaler.transform(X).astype("float32")
+
+#     y_raw = df[label_col].astype(str)
+#     unknown = set(y_raw.unique()) - set(label_to_id.keys())
+
+#     if len(unknown) > 0:
+#         raise ValueError(f"Test file has labels not seen during training: {unknown}")
+
+#     y = y_raw.map(label_to_id).values.astype("int64")
+
+#     test_data = TensorDataset(
+#         torch.tensor(X, dtype=torch.float32),
+#         torch.tensor(y, dtype=torch.long)
+#     )
+
+#     input_dim = len(feature_cols)
+#     num_classes = len(label_to_id)
+
+#     print("Gate-driver TEST Excel:", test_file)
+#     print("Samples:", len(test_data))
+#     print("Input dimension:", input_dim)
+#     print("Classes:", label_to_id)
+
+#     return test_data, num_classes, input_dim
+
+
+# def export_to_hfile(quantized_model, filename, runname, modelname="", input_dim=None, num_classes=None):
+#     if not quantized_model.quantized_model:
+#         raise ValueError("quantized_model is empty or None")
+
+#     max_n_activations = max([
+#         layer["incoming_weights"]
+#         for layer in quantized_model.quantized_model
+#         if "incoming_weights" in layer
+#     ])
+
+#     with open(filename, "w") as f:
+#         f.write("// Automatically generated header file\n")
+#         f.write(f"// Date: {datetime.now()}\n")
+#         f.write(f"// Quantized model exported from {runname}.pth\n")
+#         f.write("// Generated by exportquant.py\n\n")
+
+#         f.write("#include <stdint.h>\n\n")
+#         f.write("#ifndef BITNETMCU_MODEL_H\n")
+#         f.write("#define BITNETMCU_MODEL_H\n\n")
+
+#         f.write("// Model class name\n")
+#         f.write(f"#define MODEL_{modelname}\n\n")
+
+#         if input_dim is not None:
+#             f.write(f"#define MODEL_INPUT_DIM {input_dim}\n")
+
+#         if num_classes is not None:
+#             f.write(f"#define MODEL_NUM_CLASSES {num_classes}\n\n")
+
+#         f.write(f"#define NUM_LAYERS {len(quantized_model.quantized_model)}\n")
+#         f.write(f"#define MAX_N_ACTIVATIONS {max_n_activations}\n\n")
+
+#         for layer_info in quantized_model.quantized_model:
+#             layer = f'L{layer_info["layer_order"]}'
+
+#             if layer_info["layer_type"] == "BitLinear":
+#                 incoming_weights = layer_info["incoming_weights"]
+#                 outgoing_weights = layer_info["outgoing_weights"]
+#                 bpw = layer_info["bpw"]
+#                 weights = np.array(layer_info["quantized_weights"])
+#                 quantization_type = layer_info["quantization_type"]
+
+#                 if (bpw * incoming_weights % 32) != 0:
+#                     raise ValueError(
+#                         f"Size mismatch: incoming weights must pack to 32-bit boundary. "
+#                         f"Layer={layer}, incoming={incoming_weights}, bpw={bpw}, bits={bpw * incoming_weights}. "
+#                         f"Fix by choosing input_dim or hidden width so incoming_weights * bpw is divisible by 32."
+#                     )
+
+#                 print(
+#                     f"Layer: {layer} Quantization type: <{quantization_type}>, "
+#                     f"Bits per weight: {bpw}, Incoming: {incoming_weights}, Outgoing: {outgoing_weights}"
+#                 )
+
+#                 data_type = np.uint32
+
+#                 if quantization_type == "Binary":
+#                     encoded_weights = np.where(weights == -1, 0, 1)
+#                     QuantID = 1
+
+#                 elif quantization_type == "2bitsym":
+#                     encoded_weights = ((weights < 0).astype(data_type) << 1) | (
+#                         np.floor(np.abs(weights))
+#                     ).astype(data_type)
+#                     QuantID = 2
+
+#                 elif quantization_type == "4bitsym":
+#                     encoded_weights = ((weights < 0).astype(data_type) << 3) | (
+#                         np.floor(np.abs(weights))
+#                     ).astype(data_type)
+#                     QuantID = 4
+
+#                 elif quantization_type == "4bit":
+#                     encoded_weights = np.floor(weights).astype(data_type) & 15
+#                     QuantID = 8 + 4
+
+#                 elif quantization_type == "8bit":
+#                     encoded_weights = np.floor(weights).astype(data_type) & 255
+#                     QuantID = 8 + 8
+
+#                 elif quantization_type == "NF4":
+#                     levels = np.array([
+#                         -1.0, -0.6962, -0.5251, -0.3949,
+#                         -0.2844, -0.1848, -0.0911, 0.0,
+#                         0.0796, 0.1609, 0.2461, 0.3379,
+#                         0.4407, 0.5626, 0.723, 1.0
+#                     ])
+#                     encoded_weights = np.argmin(
+#                         np.abs(weights[:, :, np.newaxis] - levels),
+#                         axis=2
+#                     )
+#                     QuantID = 32 + 4
+
+#                 elif quantization_type == "FP130":
+#                     encoded_weights = ((weights < 0).astype(data_type) << 3) | (
+#                         np.floor(np.log2(np.abs(weights)))
+#                     ).astype(data_type)
+#                     QuantID = 16 + 4
+
+#                 elif quantization_type == "Ternary":
+#                     n_outputs, n_inputs = weights.shape
+
+#                     if n_inputs % 10 != 0:
+#                         pad_size = 10 - (n_inputs % 10)
+#                         print(
+#                             f"WARNING: Ternary layer {layer} has {n_inputs} inputs, "
+#                             f"padding with {pad_size} zeros."
+#                         )
+#                         weights = np.pad(
+#                             weights,
+#                             ((0, 0), (0, pad_size)),
+#                             mode="constant",
+#                             constant_values=0
+#                         )
+#                         n_inputs = weights.shape[1]
+
+#                     trit_values = np.where(
+#                         weights == 1,
+#                         0,
+#                         np.where(weights == -1, 1, 2)
+#                     ).astype(np.uint32)
+
+#                     packed_row_size = n_inputs // 10
+#                     packed_weights = np.zeros((n_outputs, packed_row_size), dtype=np.uint16)
+
+#                     for row in range(n_outputs):
+#                         for word_idx in range(packed_row_size):
+#                             start = word_idx * 10
+#                             chunk = trit_values[row, start:start + 10]
+
+#                             value = 0
+#                             for t in range(10):
+#                                 value = value * 3 + chunk[t]
+
+#                             packed = (value * 65536 + 59048) // 59049
+#                             packed_weights[row, word_idx] = packed
+
+#                     QuantID = 64
+
+#                     f.write(f"// Layer: {layer}\n")
+#                     f.write(f"// QuantType: {quantization_type}\n")
+#                     f.write(f"#define {layer}_active\n")
+#                     f.write(f"#define {layer}_bitperweight {QuantID}\n")
+#                     f.write(f"#define {layer}_incoming_weights {n_inputs}\n")
+#                     f.write(f"#define {layer}_outgoing_weights {outgoing_weights}\n")
+
+#                     f.write(f"const uint16_t {layer}_weights[] = {{")
+#                     for i, data in enumerate(packed_weights.flatten()):
+#                         if i % 10 == 0:
+#                             f.write("\n\t")
+#                         f.write(f"0x{data:04x},")
+#                     f.write("\n};\n\n")
+
+#                     continue
+
+#                 else:
+#                     print(
+#                         f"Skipping layer {layer}. Unsupported quantization type: {quantization_type}"
+#                     )
+#                     continue
+
+#                 weight_per_word = 32 // bpw
+#                 reshaped_array = encoded_weights.reshape(-1, weight_per_word)
+
+#                 bit_positions = 32 - bpw - np.arange(weight_per_word, dtype=data_type) * bpw
+#                 packed_weights = np.bitwise_or.reduce(
+#                     reshaped_array << bit_positions,
+#                     axis=1
+#                 ).view(data_type)
+
+#                 f.write(f"// Layer: {layer}\n")
+#                 f.write(f"// QuantType: {quantization_type}\n")
+#                 f.write(f"#define {layer}_active\n")
+#                 f.write(f"#define {layer}_bitperweight {QuantID}\n")
+#                 f.write(f"#define {layer}_incoming_weights {incoming_weights}\n")
+#                 f.write(f"#define {layer}_outgoing_weights {outgoing_weights}\n")
+
+#                 f.write(f"const uint32_t {layer}_weights[] = {{")
+#                 for i, data in enumerate(packed_weights.flatten()):
+#                     if i & 7 == 0:
+#                         f.write("\n\t")
+#                     f.write(f"0x{data:08x},")
+#                 f.write("\n}; // first channel is topmost bit\n\n")
+
+#             elif layer_info["layer_type"] == "BitConv2d":
+#                 in_channels = layer_info["in_channels"]
+#                 out_channels = layer_info["out_channels"]
+#                 incoming_x = layer_info["incoming_x"]
+#                 incoming_y = layer_info["incoming_y"]
+#                 outgoing_x = layer_info["outgoing_x"]
+#                 outgoing_y = layer_info["outgoing_y"]
+#                 groups = layer_info["groups"]
+#                 kernel_size = layer_info["kernel_size"][0]
+#                 bpw = layer_info["bpw"]
+#                 weights = np.array(layer_info["quantized_weights"])
+
+#                 f.write(f"// Layer: {layer} Convolutional\n")
+#                 f.write(f"#define {layer}_active\n")
+#                 f.write(f"#define {layer}_type BitConv2d\n")
+#                 f.write(f"#define {layer}_in_channels {in_channels}\n")
+#                 f.write(f"#define {layer}_out_channels {out_channels}\n")
+#                 f.write(f"#define {layer}_incoming_x {incoming_x}\n")
+#                 f.write(f"#define {layer}_incoming_y {incoming_y}\n")
+#                 f.write(f"#define {layer}_outgoing_x {outgoing_x}\n")
+#                 f.write(f"#define {layer}_outgoing_y {outgoing_y}\n")
+#                 f.write(f"#define {layer}_kernel_size {kernel_size}\n")
+#                 f.write(f"#define {layer}_stride 1\n")
+#                 f.write(f"#define {layer}_padding 0\n")
+#                 f.write(f"#define {layer}_groups {groups}\n")
+#                 f.write(f"#define {layer}_bitperweight {bpw}\n")
+
+#                 f.write(f"const int8_t {layer}_weights[] = {{")
+#                 for i, data in enumerate(weights.flatten()):
+#                     if i % 16 == 0:
+#                         f.write("\n\t")
+#                     f.write(f"{int(data)},")
+#                 f.write("\n};\n\n")
+
+#             elif layer_info["layer_type"] == "MaxPool2d":
+#                 pool_size = layer_info["kernel_size"]
+#                 incoming_x = layer_info["incoming_x"]
+#                 incoming_y = layer_info["incoming_y"]
+#                 outgoing_x = layer_info["outgoing_x"]
+#                 outgoing_y = layer_info["outgoing_y"]
+
+#                 f.write(f"#define {layer}_active\n")
+#                 f.write(f"#define {layer}_type MaxPool2d\n")
+#                 f.write(f"#define {layer}_pool_size {pool_size}\n")
+#                 f.write(f"#define {layer}_incoming_x {incoming_x}\n")
+#                 f.write(f"#define {layer}_incoming_y {incoming_y}\n")
+#                 f.write(f"#define {layer}_outgoing_x {outgoing_x}\n")
+#                 f.write(f"#define {layer}_outgoing_y {outgoing_y}\n\n")
+
+#         f.write("#endif\n")
+
+
+# def print_stats(quantized_model):
+#     for layer_info in quantized_model.quantized_model:
+#         if layer_info["layer_type"] in ["BitLinear", "BitConv2d"]:
+#             weights = np.array(layer_info["quantized_weights"])
+#             print()
+#             print(
+#                 f'Layer: {layer_info["layer_order"]}, '
+#                 f"Max: {np.max(weights)}, Min: {np.min(weights)}, "
+#                 f"Mean: {np.mean(weights)}, Std: {np.std(weights)}"
+#             )
+
+#             values, counts = np.unique(weights, return_counts=True)
+#             probabilities = counts / np.sum(counts)
+
+#             print(f"Values: {values}")
+#             print(f"Percent: {probabilities * 100}")
+
+#             number_of_codes = 2 ** layer_info["bpw"]
+#             entropy = -np.sum(probabilities * np.log2(probabilities))
+#             print(
+#                 f"Entropy: {entropy:.2f} bits. "
+#                 f"Code capacity used: {entropy / np.log2(number_of_codes) * 100:.2f} %"
+#             )
+
+
+# def print_masking_layers(model):
+#     if MaskingLayer is None:
+#         print("MaskingLayer not available.")
+#         return
+
+#     masking_layer_count = 0
+
+#     for name, module in model.named_modules():
+#         if isinstance(module, MaskingLayer):
+#             masking_layer_count += 1
+#             mask_params = module.mask.data
+#             active_channels = torch.sum(mask_params > 0.5).item()
+#             total_channels = len(mask_params)
+
+#             print(f"SoftMaskLayer found in {name}:")
+#             print(f"Total channels: {total_channels}")
+#             print(f"Active channels: {active_channels}")
+#             print(f"Pruned channels: {total_channels - active_channels}")
+
+#     if masking_layer_count == 0:
+#         print("No SoftMaskLayers found in the model.")
+#     else:
+#         print(f"Total SoftMaskLayers found: {masking_layer_count}")
+
+
+# def plot_weight_histograms(quantized_model):
+#     if sns is None:
+#         print("seaborn not available, skipping histogram.")
+#         return
+
+#     fig = plt.figure(figsize=(10, 10))
+
+#     for layer_index, layer in enumerate(quantized_model.quantized_model):
+#         if layer["layer_type"] in ["BitConv2d", "BitLinear"]:
+#             layer_weights = np.array(layer["quantized_weights"])
+#             bpw = layer["bpw"]
+#             flattened_weights = layer_weights.flatten()
+
+#             ax = fig.add_subplot(len(quantized_model.quantized_model), 1, layer_index + 1)
+#             sns.histplot(flattened_weights, bins=2 ** bpw, ax=ax, kde=True)
+#             ax.set_title(f"Layer {layer_index + 1} Weight Distribution")
+
+#     plt.tight_layout()
+#     plt.show(block=False)
+
+
+# if __name__ == "__main__":
+#     parser = argparse.ArgumentParser(description="Export quantized BitNetMCU model")
+#     parser.add_argument(
+#         "--params",
+#         type=str,
+#         help="Name of parameter YAML file",
+#         default="trainingparameters.yaml"
+#     )
+
+#     args = parser.parse_args()
+#     paramname = args.params
+
+#     print(f"Load parameters from file: {paramname}")
+
+#     with open(paramname) as f:
+#         hyperparameters = yaml.safe_load(f)
+
+#     hyperparameters.setdefault("augmentation", False)
+#     hyperparameters.setdefault("network_width3", 0)
+#     hyperparameters.setdefault("dropout", 0.1)
+
+#     runname = create_run_name(hyperparameters)
+#     print("Run name:", runname)
+
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     dataset_name = hyperparameters.get("dataset", "MNIST").upper()
+
+#     input_dim = None
+
+#     if dataset_name == "GATE_DRIVER":
+#         test_data, num_classes, input_dim = load_gate_driver_test_excel(
+#             test_file=hyperparameters["test_file"],
+#             label_col=hyperparameters.get("label_col", "label")
+#         )
+
+#         hyperparameters["input_dim"] = input_dim
+
+#     elif dataset_name == "MNIST":
+#         num_classes = 10
+#         mean, std = (0.1307,), (0.3081,)
+#         transform = transforms.Compose([
+#             transforms.Resize((16, 16)),
+#             transforms.ToTensor(),
+#             transforms.Normalize(mean, std)
+#         ])
+#         test_data = datasets.MNIST(
+#             root="data",
+#             train=False,
+#             transform=transform,
+#             download=True
+#         )
+
+#     elif dataset_name.startswith("EMNIST"):
+#         split = dataset_name.split("_")[1].lower() if "_" in dataset_name else "balanced"
+#         split_alias = {
+#             "BALANCED": "balanced",
+#             "BYCLASS": "byclass",
+#             "BYMERGE": "bymerge",
+#             "LETTERS": "letters",
+#             "DIGITS": "digits",
+#             "MNIST": "mnist"
+#         }
+#         split = split_alias.get(split.upper(), split)
+
+#         split_classes = {
+#             "byclass": 62,
+#             "bymerge": 47,
+#             "balanced": 47,
+#             "letters": 37,
+#             "digits": 10,
+#             "mnist": 10
+#         }
+
+#         num_classes = split_classes.get(split, 47)
+
+#         from torchvision.datasets import EMNIST
+
+#         mean, std = (0.1307,), (0.3081,)
+#         transform = transforms.Compose([
+#             transforms.Resize((16, 16)),
+#             transforms.ToTensor(),
+#             transforms.Normalize(mean, std)
+#         ])
+
+#         test_data = EMNIST(
+#             root="data",
+#             split=split,
+#             train=False,
+#             transform=transform,
+#             download=True
+#         )
+
+#     elif dataset_name == "FASHION":
+#         num_classes = 10
+#         mean, std = (0.2860,), (0.3530,)
+#         transform = transforms.Compose([
+#             transforms.Resize((16, 16)),
+#             transforms.ToTensor(),
+#             transforms.Normalize(mean, std)
+#         ])
+#         test_data = datasets.FashionMNIST(
+#             root="data",
+#             train=False,
+#             transform=transform,
+#             download=True
+#         )
+
+#     elif dataset_name == "OLIVETTI":
+#         num_classes = 40
+#         mean, std = (0.5,), (0.5,)
+
+#         data_root = hyperparameters["data_root"]
+#         test_folder = hyperparameters.get(
+#             "test_folder",
+#             "olivetti_FINAL_TEST_SET_LOCKED_ONLY"
+#         )
+
+#         test_dir = os.path.join(data_root, test_folder)
+
+#         if not os.path.exists(test_dir):
+#             raise FileNotFoundError(f"Testing folder not found: {test_dir}")
+
+#         transform = transforms.Compose([
+#             transforms.Grayscale(num_output_channels=1),
+#             transforms.Resize((16, 16)),
+#             transforms.ToTensor(),
+#             transforms.Normalize(mean, std)
+#         ])
+
+#         test_data = ImageFolder(root=test_dir, transform=transform)
+
+#     else:
+#         raise ValueError(f"Unsupported dataset: {dataset_name}")
+
+#     hyperparameters["num_classes"] = num_classes
+
+#     test_loader = DataLoader(
+#         test_data,
+#         batch_size=hyperparameters["batch_size"],
+#         shuffle=False
+#     )
+
+#     model = load_model(hyperparameters["model"], hyperparameters).to(device)
+
+#     print("Loading model...")
+
+#     checkpoint_path = f"modeldata/{runname}.pth"
+#     best_checkpoint_path = f"modeldata/{runname}_best.pth"
+
+#     if os.path.exists(best_checkpoint_path):
+#         checkpoint_path = best_checkpoint_path
+
+#     if not os.path.exists(checkpoint_path):
+#         raise FileNotFoundError(
+#             f"Cannot find checkpoint. Expected:\n"
+#             f"modeldata/{runname}.pth\n"
+#             f"or\n"
+#             f"modeldata/{runname}_best.pth"
+#         )
+
+#     state = torch.load(checkpoint_path, map_location="cpu")
+#     model.load_state_dict(state, strict=True)
+#     model.eval()
+
+#     print("Loaded checkpoint:", checkpoint_path)
+
+#     print("Inference using original model...")
+
+#     correct = 0
+#     total = 0
+
+#     with torch.no_grad():
+#         for images, labels in test_loader:
+#             images, labels = images.to(device), labels.to(device)
+
+#             outputs = model(images)
+#             _, predicted = torch.max(outputs.data, 1)
+
+#             total += labels.size(0)
+#             correct += (predicted == labels).sum().item()
+
+#     testaccuracy = correct / total * 100
+#     print(f"Accuracy/Test of trained model: {testaccuracy:.2f} %")
+
+#     print("Quantizing model...")
+#     quantized_model = QuantizedModel(model)
+
+#     print_stats(quantized_model)
+#     print_masking_layers(model)
+
+#     if showplots:
+#         plot_weight_histograms(quantized_model)
+
+#     total_bits = quantized_model.totalbits()
+#     print(f"Total number of bits: {total_bits} ({total_bits / 8 / 1024:.4f} kbytes)")
+
+#     print("Inference of quantized model...")
+
+#     total_correct_predictions = 0
+#     total_samples = 0
+
+#     for input_data, labels in test_loader:
+#         input_data = input_data.view(input_data.size(0), -1).cpu().numpy()
+#         labels = labels.cpu().numpy()
+
+#         result = quantized_model.inference_quantized(input_data)
+#         predict = np.argmax(result, axis=1)
+
+#         correct_predictions = (predict == labels).sum()
+
+#         total_correct_predictions += correct_predictions
+#         total_samples += input_data.shape[0]
+
+#     overall_correct_predictions = total_correct_predictions / total_samples
+
+#     print("Accuracy/Test of quantized model:", overall_correct_predictions * 100, "%")
+
+#     print("Exporting model to header file...")
+
+#     export_name = hyperparameters.get("export_header", "BitNetMCU_model.h")
+
+#     export_to_hfile(
+#         quantized_model,
+#         export_name,
+#         runname,
+#         hyperparameters["model"],
+#         input_dim=input_dim,
+#         num_classes=num_classes
+#     )
+
+#     print("Export completed:", export_name)
+
+#     if dataset_name == "GATE_DRIVER":
+#         print("Gate-driver export completed.")
+#         print("Important: your C inference input length must use MODEL_INPUT_DIM, not fixed 256.")
+
+#     if showplots:
+#         plt.show()
+
 import os
 import json
 import pickle
+import argparse
+from datetime import datetime
+
+import yaml
+import numpy as np
 import pandas as pd
 
-try:
-    import seaborn as sns
-except Exception:
-    sns = None
+import torch
+import torch.nn as nn
+from torch.utils.data import TensorDataset
+
+from BitNetMCU import QuantizedModel, BitLinear, BitConv2d, Activation
 
 try:
-    from models import MaskingLayer
+    import importlib
 except Exception:
-    MaskingLayer = None
-
-
-showplots = False
+    importlib = None
 
 
 def create_run_name(hyperparameters):
     runname = (
-        hyperparameters["runtag"] + "_"
+        hyperparameters["runtag"]
+        + "_"
         + hyperparameters["model"]
         + ("_Aug" if hyperparameters.get("augmentation", False) else "")
         + "_BitMnist_"
         + hyperparameters["QuantType"]
         + "_width"
-        + str(hyperparameters["network_width1"]) + "_"
-        + str(hyperparameters["network_width2"]) + "_"
+        + str(hyperparameters["network_width1"])
+        + "_"
+        + str(hyperparameters["network_width2"])
+        + "_"
         + str(hyperparameters["network_width3"])
         + "_epochs"
         + str(hyperparameters["num_epochs"])
@@ -1275,7 +2016,7 @@ def make_bitlinear(in_features, out_features, QuantType, NormType, WScale):
             out_features,
             QuantType=QuantType,
             NormType=NormType,
-            WScale=WScale
+            WScale=WScale,
         )
     except TypeError:
         try:
@@ -1284,7 +2025,7 @@ def make_bitlinear(in_features, out_features, QuantType, NormType, WScale):
                 out_features,
                 QuantType,
                 NormType,
-                WScale
+                WScale,
             )
         except TypeError:
             print("Warning: BitLinear failed. Falling back to nn.Linear.")
@@ -1302,8 +2043,8 @@ class GateDriverMLP(nn.Module):
         NormType="RMS",
         WScale="PerTensor",
         num_classes=4,
-        dropout=0.1,
-        **kwargs
+        dropout=0.0,
+        **kwargs,
     ):
         super().__init__()
 
@@ -1332,6 +2073,9 @@ def load_model(model_name, params):
     if model_name == "GateDriverMLP":
         return GateDriverMLP(**params)
 
+    if importlib is None:
+        raise ValueError("Cannot import models.py")
+
     try:
         module = importlib.import_module("models")
         model_class = getattr(module, model_name)
@@ -1357,7 +2101,16 @@ def load_model(model_name, params):
         raise ValueError(f"Model {model_name} not found in models.py or exportquant.py")
 
 
-def load_gate_driver_test_excel(test_file, label_col="label"):
+def tabular_to_cnnmnist_image(X):
+    if X.shape[1] > 256:
+        raise ValueError(f"Too many features for 16x16 CNN input: {X.shape[1]} > 256")
+
+    X_pad = np.zeros((X.shape[0], 256), dtype=np.float32)
+    X_pad[:, :X.shape[1]] = X
+    return X_pad.reshape(-1, 1, 16, 16)
+
+
+def load_gate_driver_test_excel(test_file, label_col="label", model_name="GateDriverMLP"):
     if not os.path.exists(test_file):
         raise FileNotFoundError(f"Test Excel file not found: {test_file}")
 
@@ -1389,12 +2142,19 @@ def load_gate_driver_test_excel(test_file, label_col="label"):
         raise ValueError(f"Label column '{label_col}' not found in test file.")
 
     missing_cols = [c for c in feature_cols if c not in df.columns]
+
     if len(missing_cols) > 0:
         raise ValueError(f"Test file missing required feature columns: {missing_cols}")
 
     X = df[feature_cols].copy()
     X = X.fillna(X.median(numeric_only=True))
-    X = scaler.transform(X).astype("float32")
+    X = scaler.transform(X).astype(np.float32)
+
+    input_dim = len(feature_cols)
+
+    if model_name == "CNNMNIST":
+        print("Converting gate-driver export/test features to CNNMNIST input shape [N, 1, 16, 16]...")
+        X = tabular_to_cnnmnist_image(X)
 
     y_raw = df[label_col].astype(str)
     unknown = set(y_raw.unique()) - set(label_to_id.keys())
@@ -1402,19 +2162,18 @@ def load_gate_driver_test_excel(test_file, label_col="label"):
     if len(unknown) > 0:
         raise ValueError(f"Test file has labels not seen during training: {unknown}")
 
-    y = y_raw.map(label_to_id).values.astype("int64")
+    y = y_raw.map(label_to_id).values.astype(np.int64)
 
     test_data = TensorDataset(
         torch.tensor(X, dtype=torch.float32),
-        torch.tensor(y, dtype=torch.long)
+        torch.tensor(y, dtype=torch.long),
     )
 
-    input_dim = len(feature_cols)
     num_classes = len(label_to_id)
 
     print("Gate-driver TEST Excel:", test_file)
     print("Samples:", len(test_data))
-    print("Input dimension:", input_dim)
+    print("Original input dimension:", input_dim)
     print("Classes:", label_to_id)
 
     return test_data, num_classes, input_dim
@@ -1465,8 +2224,7 @@ def export_to_hfile(quantized_model, filename, runname, modelname="", input_dim=
                 if (bpw * incoming_weights % 32) != 0:
                     raise ValueError(
                         f"Size mismatch: incoming weights must pack to 32-bit boundary. "
-                        f"Layer={layer}, incoming={incoming_weights}, bpw={bpw}, bits={bpw * incoming_weights}. "
-                        f"Fix by choosing input_dim or hidden width so incoming_weights * bpw is divisible by 32."
+                        f"Layer={layer}, incoming={incoming_weights}, bpw={bpw}, bits={bpw * incoming_weights}."
                     )
 
                 print(
@@ -1505,11 +2263,11 @@ def export_to_hfile(quantized_model, filename, runname, modelname="", input_dim=
                         -1.0, -0.6962, -0.5251, -0.3949,
                         -0.2844, -0.1848, -0.0911, 0.0,
                         0.0796, 0.1609, 0.2461, 0.3379,
-                        0.4407, 0.5626, 0.723, 1.0
+                        0.4407, 0.5626, 0.723, 1.0,
                     ])
                     encoded_weights = np.argmin(
                         np.abs(weights[:, :, np.newaxis] - levels),
-                        axis=2
+                        axis=2,
                     )
                     QuantID = 32 + 4
 
@@ -1532,14 +2290,14 @@ def export_to_hfile(quantized_model, filename, runname, modelname="", input_dim=
                             weights,
                             ((0, 0), (0, pad_size)),
                             mode="constant",
-                            constant_values=0
+                            constant_values=0,
                         )
                         n_inputs = weights.shape[1]
 
                     trit_values = np.where(
                         weights == 1,
                         0,
-                        np.where(weights == -1, 1, 2)
+                        np.where(weights == -1, 1, 2),
                     ).astype(np.uint32)
 
                     packed_row_size = n_inputs // 10
@@ -1576,18 +2334,17 @@ def export_to_hfile(quantized_model, filename, runname, modelname="", input_dim=
                     continue
 
                 else:
-                    print(
-                        f"Skipping layer {layer}. Unsupported quantization type: {quantization_type}"
-                    )
+                    print(f"Skipping layer {layer}. Unsupported quantization type: {quantization_type}")
                     continue
 
                 weight_per_word = 32 // bpw
                 reshaped_array = encoded_weights.reshape(-1, weight_per_word)
 
                 bit_positions = 32 - bpw - np.arange(weight_per_word, dtype=data_type) * bpw
+
                 packed_weights = np.bitwise_or.reduce(
                     reshaped_array << bit_positions,
-                    axis=1
+                    axis=1,
                 ).view(data_type)
 
                 f.write(f"// Layer: {layer}\n")
@@ -1656,84 +2413,13 @@ def export_to_hfile(quantized_model, filename, runname, modelname="", input_dim=
         f.write("#endif\n")
 
 
-def print_stats(quantized_model):
-    for layer_info in quantized_model.quantized_model:
-        if layer_info["layer_type"] in ["BitLinear", "BitConv2d"]:
-            weights = np.array(layer_info["quantized_weights"])
-            print()
-            print(
-                f'Layer: {layer_info["layer_order"]}, '
-                f"Max: {np.max(weights)}, Min: {np.min(weights)}, "
-                f"Mean: {np.mean(weights)}, Std: {np.std(weights)}"
-            )
-
-            values, counts = np.unique(weights, return_counts=True)
-            probabilities = counts / np.sum(counts)
-
-            print(f"Values: {values}")
-            print(f"Percent: {probabilities * 100}")
-
-            number_of_codes = 2 ** layer_info["bpw"]
-            entropy = -np.sum(probabilities * np.log2(probabilities))
-            print(
-                f"Entropy: {entropy:.2f} bits. "
-                f"Code capacity used: {entropy / np.log2(number_of_codes) * 100:.2f} %"
-            )
-
-
-def print_masking_layers(model):
-    if MaskingLayer is None:
-        print("MaskingLayer not available.")
-        return
-
-    masking_layer_count = 0
-
-    for name, module in model.named_modules():
-        if isinstance(module, MaskingLayer):
-            masking_layer_count += 1
-            mask_params = module.mask.data
-            active_channels = torch.sum(mask_params > 0.5).item()
-            total_channels = len(mask_params)
-
-            print(f"SoftMaskLayer found in {name}:")
-            print(f"Total channels: {total_channels}")
-            print(f"Active channels: {active_channels}")
-            print(f"Pruned channels: {total_channels - active_channels}")
-
-    if masking_layer_count == 0:
-        print("No SoftMaskLayers found in the model.")
-    else:
-        print(f"Total SoftMaskLayers found: {masking_layer_count}")
-
-
-def plot_weight_histograms(quantized_model):
-    if sns is None:
-        print("seaborn not available, skipping histogram.")
-        return
-
-    fig = plt.figure(figsize=(10, 10))
-
-    for layer_index, layer in enumerate(quantized_model.quantized_model):
-        if layer["layer_type"] in ["BitConv2d", "BitLinear"]:
-            layer_weights = np.array(layer["quantized_weights"])
-            bpw = layer["bpw"]
-            flattened_weights = layer_weights.flatten()
-
-            ax = fig.add_subplot(len(quantized_model.quantized_model), 1, layer_index + 1)
-            sns.histplot(flattened_weights, bins=2 ** bpw, ax=ax, kde=True)
-            ax.set_title(f"Layer {layer_index + 1} Weight Distribution")
-
-    plt.tight_layout()
-    plt.show(block=False)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Export quantized BitNetMCU model")
     parser.add_argument(
         "--params",
         type=str,
         help="Name of parameter YAML file",
-        default="trainingparameters.yaml"
+        default="trainingparameters.yaml",
     )
 
     args = parser.parse_args()
@@ -1746,222 +2432,91 @@ if __name__ == "__main__":
 
     hyperparameters.setdefault("augmentation", False)
     hyperparameters.setdefault("network_width3", 0)
-    hyperparameters.setdefault("dropout", 0.1)
+    hyperparameters.setdefault("dropout", 0.0)
 
     runname = create_run_name(hyperparameters)
     print("Run name:", runname)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     dataset_name = hyperparameters.get("dataset", "MNIST").upper()
 
-    input_dim = None
+    if dataset_name != "GATE_DRIVER":
+        raise ValueError("This exportquant.py is prepared for dataset: GATE_DRIVER only.")
 
-    if dataset_name == "GATE_DRIVER":
-        test_data, num_classes, input_dim = load_gate_driver_test_excel(
-            test_file=hyperparameters["test_file"],
-            label_col=hyperparameters.get("label_col", "label")
-        )
-
-        hyperparameters["input_dim"] = input_dim
-
-    elif dataset_name == "MNIST":
-        num_classes = 10
-        mean, std = (0.1307,), (0.3081,)
-        transform = transforms.Compose([
-            transforms.Resize((16, 16)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std)
-        ])
-        test_data = datasets.MNIST(
-            root="data",
-            train=False,
-            transform=transform,
-            download=True
-        )
-
-    elif dataset_name.startswith("EMNIST"):
-        split = dataset_name.split("_")[1].lower() if "_" in dataset_name else "balanced"
-        split_alias = {
-            "BALANCED": "balanced",
-            "BYCLASS": "byclass",
-            "BYMERGE": "bymerge",
-            "LETTERS": "letters",
-            "DIGITS": "digits",
-            "MNIST": "mnist"
-        }
-        split = split_alias.get(split.upper(), split)
-
-        split_classes = {
-            "byclass": 62,
-            "bymerge": 47,
-            "balanced": 47,
-            "letters": 37,
-            "digits": 10,
-            "mnist": 10
-        }
-
-        num_classes = split_classes.get(split, 47)
-
-        from torchvision.datasets import EMNIST
-
-        mean, std = (0.1307,), (0.3081,)
-        transform = transforms.Compose([
-            transforms.Resize((16, 16)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std)
-        ])
-
-        test_data = EMNIST(
-            root="data",
-            split=split,
-            train=False,
-            transform=transform,
-            download=True
-        )
-
-    elif dataset_name == "FASHION":
-        num_classes = 10
-        mean, std = (0.2860,), (0.3530,)
-        transform = transforms.Compose([
-            transforms.Resize((16, 16)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std)
-        ])
-        test_data = datasets.FashionMNIST(
-            root="data",
-            train=False,
-            transform=transform,
-            download=True
-        )
-
-    elif dataset_name == "OLIVETTI":
-        num_classes = 40
-        mean, std = (0.5,), (0.5,)
-
-        data_root = hyperparameters["data_root"]
-        test_folder = hyperparameters.get(
-            "test_folder",
-            "olivetti_FINAL_TEST_SET_LOCKED_ONLY"
-        )
-
-        test_dir = os.path.join(data_root, test_folder)
-
-        if not os.path.exists(test_dir):
-            raise FileNotFoundError(f"Testing folder not found: {test_dir}")
-
-        transform = transforms.Compose([
-            transforms.Grayscale(num_output_channels=1),
-            transforms.Resize((16, 16)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std)
-        ])
-
-        test_data = ImageFolder(root=test_dir, transform=transform)
-
-    else:
-        raise ValueError(f"Unsupported dataset: {dataset_name}")
+    test_data, num_classes, input_dim = load_gate_driver_test_excel(
+        test_file=hyperparameters["test_file"],
+        label_col=hyperparameters.get("label_col", "label"),
+        model_name=hyperparameters["model"],
+    )
 
     hyperparameters["num_classes"] = num_classes
-
-    test_loader = DataLoader(
-        test_data,
-        batch_size=hyperparameters["batch_size"],
-        shuffle=False
-    )
+    hyperparameters["input_dim"] = input_dim
 
     model = load_model(hyperparameters["model"], hyperparameters).to(device)
 
-    print("Loading model...")
+    if hyperparameters["model"] == "CNNMNIST":
+        dummy_input = torch.randn(1, 1, 16, 16).to(device)
+    else:
+        dummy_input = torch.randn(1, input_dim).to(device)
 
-    checkpoint_path = f"modeldata/{runname}.pth"
-    best_checkpoint_path = f"modeldata/{runname}_best.pth"
+    with torch.no_grad():
+        dummy_output = model(dummy_input)
 
-    if os.path.exists(best_checkpoint_path):
-        checkpoint_path = best_checkpoint_path
+    print("Model output shape:", dummy_output.shape)
+    print("Expected classes:", num_classes)
 
-    if not os.path.exists(checkpoint_path):
+    if dummy_output.shape[1] != num_classes:
+        raise ValueError(
+            f"Model output mismatch. Model outputs {dummy_output.shape[1]} classes, "
+            f"but dataset needs {num_classes} classes."
+        )
+
+    model_path = f"modeldata/{runname}.pth"
+    best_model_path = f"modeldata/{runname}_best.pth"
+
+    if os.path.exists(best_model_path):
+        model_path = best_model_path
+
+    if not os.path.exists(model_path):
         raise FileNotFoundError(
-            f"Cannot find checkpoint. Expected:\n"
+            f"Cannot find model checkpoint:\n"
+            f"{model_path}\n"
+            f"Expected either:\n"
             f"modeldata/{runname}.pth\n"
             f"or\n"
             f"modeldata/{runname}_best.pth"
         )
 
-    state = torch.load(checkpoint_path, map_location="cpu")
-    model.load_state_dict(state, strict=True)
+    model.load_state_dict(
+        torch.load(
+            model_path,
+            map_location=torch.device("cpu"),
+        )
+    )
+
+    print("Loaded checkpoint:", model_path)
+
+    model = model.to(device)
     model.eval()
-
-    print("Loaded checkpoint:", checkpoint_path)
-
-    print("Inference using original model...")
-
-    correct = 0
-    total = 0
-
-    with torch.no_grad():
-        for images, labels in test_loader:
-            images, labels = images.to(device), labels.to(device)
-
-            outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-
-    testaccuracy = correct / total * 100
-    print(f"Accuracy/Test of trained model: {testaccuracy:.2f} %")
 
     print("Quantizing model...")
     quantized_model = QuantizedModel(model)
 
-    print_stats(quantized_model)
-    print_masking_layers(model)
+    print(f"Total number of bits: {quantized_model.totalbits()}")
+    print(f"Total size: {quantized_model.totalbits() / 8 / 1024:.4f} KB")
 
-    if showplots:
-        plot_weight_histograms(quantized_model)
+    export_header = hyperparameters.get("export_header", "BitNetMCU_model.h")
 
-    total_bits = quantized_model.totalbits()
-    print(f"Total number of bits: {total_bits} ({total_bits / 8 / 1024:.4f} kbytes)")
-
-    print("Inference of quantized model...")
-
-    total_correct_predictions = 0
-    total_samples = 0
-
-    for input_data, labels in test_loader:
-        input_data = input_data.view(input_data.size(0), -1).cpu().numpy()
-        labels = labels.cpu().numpy()
-
-        result = quantized_model.inference_quantized(input_data)
-        predict = np.argmax(result, axis=1)
-
-        correct_predictions = (predict == labels).sum()
-
-        total_correct_predictions += correct_predictions
-        total_samples += input_data.shape[0]
-
-    overall_correct_predictions = total_correct_predictions / total_samples
-
-    print("Accuracy/Test of quantized model:", overall_correct_predictions * 100, "%")
-
-    print("Exporting model to header file...")
-
-    export_name = hyperparameters.get("export_header", "BitNetMCU_model.h")
+    print("Exporting model to header file:", export_header)
 
     export_to_hfile(
         quantized_model,
-        export_name,
+        export_header,
         runname,
         hyperparameters["model"],
-        input_dim=input_dim,
-        num_classes=num_classes
+        input_dim=256 if hyperparameters["model"] == "CNNMNIST" else input_dim,
+        num_classes=num_classes,
     )
 
-    print("Export completed:", export_name)
-
-    if dataset_name == "GATE_DRIVER":
-        print("Gate-driver export completed.")
-        print("Important: your C inference input length must use MODEL_INPUT_DIM, not fixed 256.")
-
-    if showplots:
-        plt.show()
+    print("Export done:", export_header)
