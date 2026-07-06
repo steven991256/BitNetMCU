@@ -107,12 +107,12 @@ val_file: /content/gate_driver_validation.xlsx
 test_file: /content/gate_driver_test.xlsx
 label_col: label
 
-num_epochs: 80
+num_epochs: 100
 batch_size: 32
 learning_rate: 0.001
 scheduler: Cosine
 
-QuantType: 4bitsym
+QuantType: 8bit
 NormType: RMS
 WScale: PerTensor
 
@@ -128,7 +128,7 @@ augmentation: false
 lambda_l1: 0.0
 prune_epoch: -1
 
-maxw_update_until_epoch: 60
+maxw_update_until_epoch: 80
 maxw_algo: octav
 maxw_quantscale: 0.25
 
