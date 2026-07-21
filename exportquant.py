@@ -2234,7 +2234,11 @@ def export_to_hfile(quantized_model, filename, runname, modelname="", input_dim=
 
                 data_type = np.uint32
 
-                if quantization_type == "Binary":
+                if quantization_type in ("BinaryBalanced"):
+                    encoded_weights = np.where(weights < 0, 0, 1).astype(data_type)
+                    QuantID = 1
+
+                elif quantization_type == "Binary":
                     encoded_weights = np.where(weights == -1, 0, 1)
                     QuantID = 1
 
