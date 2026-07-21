@@ -2244,7 +2244,7 @@ class GateDriverMLP(nn.Module):
         network_width1=64,
         network_width2=32,
         network_width3=0,
-        QuantType="4bitsym",
+        QuantType="BinaryBalanced",
         NormType="RMS",
         WScale="PerTensor",
         num_classes=4,
