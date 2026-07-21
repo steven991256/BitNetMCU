@@ -112,7 +112,7 @@ batch_size: 32
 learning_rate: 0.001
 scheduler: Cosine
 
-QuantType: 8bit
+QuantType: BinaryBalanced
 NormType: RMS
 WScale: PerTensor
 
