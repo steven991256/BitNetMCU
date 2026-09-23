@@ -99,13 +99,52 @@
 # runtag: gate_driver
 # export_header: BitNetMCU_gate_driver_model.h
 
-dataset: GATE_DRIVER
+# dataset: GATE_DRIVER
+# model: CNNMNIST
+
+# train_file: /content/gate_driver_train.xlsx
+# val_file: /content/gate_driver_validation.xlsx
+# test_file: /content/gate_driver_test.xlsx
+# label_col: label
+
+# num_epochs: 100
+# batch_size: 32
+# learning_rate: 0.001
+# scheduler: Cosine
+
+# QuantType: BinaryBalanced
+# NormType: RMS
+# WScale: PerTensor
+
+# cnn_width: 64
+# network_width1: 64
+# network_width2: 32
+# network_width3: 0
+
+# dropout: 0.0
+# weight_decay: 0.0001
+
+# augmentation: false
+# lambda_l1: 0.0
+# prune_epoch: -1
+
+# maxw_update_until_epoch: 80
+# maxw_algo: octav
+# maxw_quantscale: 0.25
+
+# runtag: gate_driver_cnn
+# export_header: BitNetMCU_gate_driver_cnn_model.h
+
+dataset: FACE
 model: CNNMNIST
 
-train_file: /content/gate_driver_train.xlsx
-val_file: /content/gate_driver_validation.xlsx
-test_file: /content/gate_driver_test.xlsx
-label_col: label
+data_root: /content/train_validation_test-32_32
+
+train_folder: train
+val_folder: validation
+test_folder: test
+
+num_classes: 10
 
 num_epochs: 100
 batch_size: 32
@@ -121,9 +160,6 @@ network_width1: 64
 network_width2: 32
 network_width3: 0
 
-dropout: 0.0
-weight_decay: 0.0001
-
 augmentation: false
 lambda_l1: 0.0
 prune_epoch: -1
@@ -132,5 +168,5 @@ maxw_update_until_epoch: 80
 maxw_algo: octav
 maxw_quantscale: 0.25
 
-runtag: gate_driver_cnn
-export_header: BitNetMCU_gate_driver_cnn_model.h
+runtag: face32
+export_header: BitNetMCU_face32_model.h
