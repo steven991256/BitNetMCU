@@ -475,10 +475,10 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    dataset_name = hyperparameters.get("dataset", "MNIST").upper()
+    dataset_name = hyperparameters.get("dataset", "FACE").upper()
 
-    if dataset_name != "GATE_DRIVER":
-        raise ValueError("This exportquant.py is prepared for dataset: GATE_DRIVER only.")
+    if dataset_name != "FACE":
+        raise ValueError("This exportquant.py is prepared for dataset: FACE only.")
 
     test_data, num_classes, input_dim = load_gate_driver_test_excel(
         test_file=hyperparameters["test_file"],
