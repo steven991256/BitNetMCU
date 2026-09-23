@@ -480,11 +480,24 @@ if __name__ == "__main__":
     if dataset_name != "FACE":
         raise ValueError("This exportquant.py is prepared for dataset: FACE only.")
 
-    test_data, num_classes, input_dim = load_gate_driver_test_excel(
-        test_file=hyperparameters["test_file"],
-        label_col=hyperparameters.get("label_col", "label"),
-        model_name=hyperparameters["model"],
-    )
+    data_root = hyperparameters["data_root"]
+    test_dir = os.path.join(data_root, hyperparameters["test_folder"])
+
+    transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=1),
+        transforms.Resize((32, 32)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))
+    ])
+
+    test_data = datasets.ImageFolder(test_dir, transform=transform)
+
+    num_classes = len(test_data.classes)
+    input_dim = 32 * 32
+
+    print("Test samples:", len(test_data))
+    print("Test classes:", test_data.classes)
+    print("Input size:", input_dim)
 
     hyperparameters["num_classes"] = num_classes
     hyperparameters["input_dim"] = input_dim
