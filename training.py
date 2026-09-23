@@ -2172,6 +2172,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from torch.utils.data import DataLoader, TensorDataset
+from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, CosineAnnealingWarmRestarts
 from torch.utils.tensorboard import SummaryWriter
 
@@ -2828,7 +2829,7 @@ if __name__ == "__main__":
     model = load_model(hyperparameters["model"], hyperparameters).to(device)
 
     if hyperparameters["model"] == "CNNMNIST":
-        dummy_input = torch.randn(1, 1, 16, 16).to(device)
+        dummy_input = torch.randn(1, 1, 32, 32).to(device)
     else:
         dummy_input = torch.randn(1, input_dim).to(device)
 
@@ -2847,7 +2848,7 @@ if __name__ == "__main__":
     if summary is not None:
         try:
             if hyperparameters["model"] == "CNNMNIST":
-                summary(model, input_size=(1, 16, 16))
+                summary(model, input_size=(1, 32, 32))
             else:
                 summary(model, input_size=(input_dim,))
         except Exception as e:
