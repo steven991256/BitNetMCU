@@ -119,7 +119,7 @@ class CNNMNIST(nn.Module):
 
             nn.Flatten(),
             # MaskingLayer(96*4),   # learnable masking layer for auto-pruning
-            BitLinear(cnn_width*4 , network_width1,QuantType='2bitsym',NormType=NormType, WScale=WScale),
+            BitLinear(cnn_width*36 , network_width1,QuantType='2bitsym',NormType=NormType, WScale=WScale),
             nn.ReLU(),
             BitLinear(network_width1, network_width2,QuantType=QuantType,NormType=NormType, WScale=WScale),
             nn.ReLU()
