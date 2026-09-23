@@ -659,12 +659,12 @@ if __name__ == "__main__":
     if dataset_name != "FACE":
         raise ValueError("This training.py is prepared for dataset: FACE only.")
 
-   data_root = hyperparameters["data_root"]
+    data_root = hyperparameters["data_root"]
 
-   train_dir = os.path.join(data_root, hyperparameters["train_folder"])
-   val_dir = os.path.join(data_root, hyperparameters["val_folder"])
+    train_dir = os.path.join(data_root, hyperparameters["train_folder"])
+    val_dir = os.path.join(data_root, hyperparameters["val_folder"])
 
-   transform = transforms.Compose([
+    transform = transforms.Compose([
        transforms.Grayscale(num_output_channels=1),
        transforms.Resize((32, 32)),
        transforms.ToTensor(),
