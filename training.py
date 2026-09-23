@@ -654,12 +654,10 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device:", device)
 
-    dataset_name = hyperparameters.get("dataset", "MNIST").upper()
+    dataset_name = hyperparameters.get("dataset", "FACE").upper()
 
-   dataset_name = hyperparameters.get("dataset", "FACE").upper()
-
-   if dataset_name != "FACE":
-       raise ValueError("This training.py is prepared for dataset: FACE only.")
+    if dataset_name != "FACE":
+        raise ValueError("This training.py is prepared for dataset: FACE only.")
 
    data_root = hyperparameters["data_root"]
 
