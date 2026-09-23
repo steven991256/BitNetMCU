@@ -1,12 +1,9 @@
 import os
-import json
-import pickle
 import argparse
 from datetime import datetime
 
 import yaml
 import numpy as np
-import pandas as pd
 
 import torch
 import torch.nn as nn
@@ -132,85 +129,6 @@ def load_model(model_name, params):
 
     except AttributeError:
         raise ValueError(f"Model {model_name} not found in models.py or exportquant.py")
-
-
-def tabular_to_cnnmnist_image(X):
-    if X.shape[1] > 256:
-        raise ValueError(f"Too many features for 16x16 CNN input: {X.shape[1]} > 256")
-
-    X_pad = np.zeros((X.shape[0], 256), dtype=np.float32)
-    X_pad[:, :X.shape[1]] = X
-    return X_pad.reshape(-1, 1, 16, 16)
-
-
-def load_gate_driver_test_excel(test_file, label_col="label", model_name="GateDriverMLP"):
-    if not os.path.exists(test_file):
-        raise FileNotFoundError(f"Test Excel file not found: {test_file}")
-
-    feature_cols_path = "modeldata/gate_driver_feature_cols.json"
-    label_mapping_path = "modeldata/gate_driver_label_mapping.json"
-    scaler_path = "modeldata/gate_driver_scaler.pkl"
-
-    if not os.path.exists(feature_cols_path):
-        raise FileNotFoundError("Missing modeldata/gate_driver_feature_cols.json. Run training.py first.")
-
-    if not os.path.exists(label_mapping_path):
-        raise FileNotFoundError("Missing modeldata/gate_driver_label_mapping.json. Run training.py first.")
-
-    if not os.path.exists(scaler_path):
-        raise FileNotFoundError("Missing modeldata/gate_driver_scaler.pkl. Run training.py first.")
-
-    with open(feature_cols_path, "r") as f:
-        feature_cols = json.load(f)
-
-    with open(label_mapping_path, "r") as f:
-        label_to_id = json.load(f)
-
-    with open(scaler_path, "rb") as f:
-        scaler = pickle.load(f)
-
-    df = pd.read_excel(test_file)
-
-    if label_col not in df.columns:
-        raise ValueError(f"Label column '{label_col}' not found in test file.")
-
-    missing_cols = [c for c in feature_cols if c not in df.columns]
-
-    if len(missing_cols) > 0:
-        raise ValueError(f"Test file missing required feature columns: {missing_cols}")
-
-    X = df[feature_cols].copy()
-    X = X.fillna(X.median(numeric_only=True))
-    X = scaler.transform(X).astype(np.float32)
-
-    input_dim = len(feature_cols)
-
-    if model_name == "CNNMNIST":
-        print("Converting gate-driver export/test features to CNNMNIST input shape [N, 1, 16, 16]...")
-        X = tabular_to_cnnmnist_image(X)
-
-    y_raw = df[label_col].astype(str)
-    unknown = set(y_raw.unique()) - set(label_to_id.keys())
-
-    if len(unknown) > 0:
-        raise ValueError(f"Test file has labels not seen during training: {unknown}")
-
-    y = y_raw.map(label_to_id).values.astype(np.int64)
-
-    test_data = TensorDataset(
-        torch.tensor(X, dtype=torch.float32),
-        torch.tensor(y, dtype=torch.long),
-    )
-
-    num_classes = len(label_to_id)
-
-    print("Gate-driver TEST Excel:", test_file)
-    print("Samples:", len(test_data))
-    print("Original input dimension:", input_dim)
-    print("Classes:", label_to_id)
-
-    return test_data, num_classes, input_dim
-
 
 def export_to_hfile(quantized_model, filename, runname, modelname="", input_dim=None, num_classes=None):
     if not quantized_model.quantized_model:
