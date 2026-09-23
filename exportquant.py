@@ -7,7 +7,6 @@ import numpy as np
 
 import torch
 import torch.nn as nn
-from torch.utils.data import TensorDataset
 from torchvision import datasets, transforms
 
 from BitNetMCU import QuantizedModel, BitLinear, BitConv2d, Activation
@@ -60,48 +59,6 @@ def make_bitlinear(in_features, out_features, QuantType, NormType, WScale):
         except TypeError:
             print("Warning: BitLinear failed. Falling back to nn.Linear.")
             return nn.Linear(in_features, out_features)
-
-
-class GateDriverMLP(nn.Module):
-    def __init__(
-        self,
-        input_dim,
-        network_width1=64,
-        network_width2=32,
-        network_width3=0,
-        QuantType="4bitsym",
-        NormType="RMS",
-        WScale="PerTensor",
-        num_classes=4,
-        dropout=0.0,
-        **kwargs,
-    ):
-        super().__init__()
-
-        layers = []
-
-        layers.append(make_bitlinear(input_dim, network_width1, QuantType, NormType, WScale))
-        layers.append(Activation())
-
-        layers.append(make_bitlinear(network_width1, network_width2, QuantType, NormType, WScale))
-        layers.append(Activation())
-
-        if network_width3 and network_width3 > 0:
-            layers.append(make_bitlinear(network_width2, network_width3, QuantType, NormType, WScale))
-            layers.append(Activation())
-            layers.append(make_bitlinear(network_width3, num_classes, QuantType, NormType, WScale))
-        else:
-            layers.append(make_bitlinear(network_width2, num_classes, QuantType, NormType, WScale))
-
-        self.net = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.net(x)
-
-
-def load_model(model_name, params):
-    if model_name == "GateDriverMLP":
-        return GateDriverMLP(**params)
 
     if importlib is None:
         raise ValueError("Cannot import models.py")
