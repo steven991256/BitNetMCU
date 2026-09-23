@@ -55,7 +55,7 @@ class MaskingLayer(nn.Module):
 class FCMNIST(nn.Module):
     """
     Fully Connected Neural Network for MNIST dataset.
-    16x16 input image, 3 hidden layers with a configurable width.
+    32x32 input image, 3 hidden layers with a configurable width.
 
     @cpldcpu 2024-March-24
 
@@ -92,7 +92,7 @@ class FCMNIST(nn.Module):
 class CNNMNIST(nn.Module):
     """
     CNN+FC Neural Network for MNIST dataset. Depthwise separable convolutions.
-    16x16 input image, 3 hidden layers with a configurable width.
+    32x32 input image, 3 hidden layers with a configurable width.
 
     @cpldcpu 2024-April-19
 
