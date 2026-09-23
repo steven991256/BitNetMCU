@@ -11,6 +11,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset
+from torchvision import datasets, transforms
 
 from BitNetMCU import QuantizedModel, BitLinear, BitConv2d, Activation
 
@@ -505,7 +506,7 @@ if __name__ == "__main__":
     model = load_model(hyperparameters["model"], hyperparameters).to(device)
 
     if hyperparameters["model"] == "CNNMNIST":
-        dummy_input = torch.randn(1, 1, 16, 16).to(device)
+        dummy_input = torch.randn(1, 1, 32, 32).to(device)
     else:
         dummy_input = torch.randn(1, input_dim).to(device)
 
@@ -564,7 +565,7 @@ if __name__ == "__main__":
         export_header,
         runname,
         hyperparameters["model"],
-        input_dim=256 if hyperparameters["model"] == "CNNMNIST" else input_dim,
+        input_dim=1024 if hyperparameters["model"] == "CNNMNIST" else input_dim,
         num_classes=num_classes,
     )
 
