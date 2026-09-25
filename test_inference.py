@@ -182,24 +182,20 @@ if __name__ == "__main__":
             f"Model outputs {dummy_output.shape[1]} classes, "
             f"but dataset has {num_classes} classes."
         )
-
+        
     # --------------------------------------------------------
-    # Load BEST model
+    # Load FINAL model
     # --------------------------------------------------------
 
     model_path = f"modeldata/{runname}.pth"
-    best_model_path = f"modeldata/{runname}_best.pth"
-
-    if os.path.exists(best_model_path):
-        model_path = best_model_path
 
     if not os.path.exists(model_path):
         raise FileNotFoundError(
-            f"Cannot find model checkpoint:\n{model_path}"
-        )
+            f"Cannot find final model checkpoint:\n{model_path}"
+    )
 
     model.load_state_dict(
-        torch.load(
+    torch.load(
             model_path,
             map_location=torch.device("cpu")
         )
@@ -209,7 +205,7 @@ if __name__ == "__main__":
 
     model = model.to(device)
     model.eval()
-
+    
     # --------------------------------------------------------
     # Original model inference
     # --------------------------------------------------------
