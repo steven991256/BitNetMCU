@@ -1316,7 +1316,7 @@ if __name__ == "__main__":
     )
 
     # ============================================================
-    # Verify expected 4-bit configuration
+    # Verify expected mixed-precision configuration
     # ============================================================
 
     requested_quant_type = (
@@ -1332,8 +1332,22 @@ if __name__ == "__main__":
     if requested_quant_type == "4bit":
 
         print(
-            "4-bit export checks enabled."
-        )
+            "Mixed-precision export checks enabled."
+        )    
+
+        # Expected BitLinear layers in CNNMNIST:
+        #
+        # FC1        : 2bitsym / 2 bits per weight
+        # FC2        : 4bit    / 4 bits per weight
+        # Classifier : 4bit    / 4 bits per weight
+
+        expected_bitlinear_types = [
+            ("2bitsym", 2),
+            ("4bit", 4),
+            ("4bit", 4),
+        ]
+
+        bitlinear_index = 0
 
         for layer_info in (
             quantized_model.quantized_model
@@ -1343,6 +1357,14 @@ if __name__ == "__main__":
                 layer_info["layer_type"]
                 == "BitLinear"
             ):
+
+                if bitlinear_index >= len(
+                    expected_bitlinear_types
+                ):
+                    raise ValueError(
+                        "Found more BitLinear layers "
+                        "than expected."
+                    )
 
                 qtype = (
                     layer_info[
@@ -1354,21 +1376,51 @@ if __name__ == "__main__":
                     layer_info["bpw"]
                 )
 
-                if qtype != "4bit":
+                expected_qtype, expected_bpw = (
+                    expected_bitlinear_types[
+                        bitlinear_index
+                    ]
+                )
+
+                print(
+                    f"BitLinear #{bitlinear_index + 1}: "
+                    f"QuantType={qtype}, "
+                    f"BPW={bpw}"
+                )
+
+                if qtype != expected_qtype:
 
                     raise ValueError(
-                        "Expected BitLinear "
-                        f"4bit layer but found "
-                        f"{qtype}."
+                        f"BitLinear #{bitlinear_index + 1}: "
+                        f"expected {expected_qtype}, "
+                        f"but found {qtype}."
                     )
 
-                if bpw != 4:
+                if bpw != expected_bpw:
 
                     raise ValueError(
-                        f"Expected 4 bits/weight "
-                        f"but layer has "
-                        f"{bpw}."
+                        f"BitLinear #{bitlinear_index + 1}: "
+                        f"expected {expected_bpw} "
+                        f"bits/weight, "
+                        f"but found {bpw}."
                     )
+
+                bitlinear_index += 1
+
+        if bitlinear_index != len(
+            expected_bitlinear_types
+        ):
+            raise ValueError(
+                f"Expected "
+                f"{len(expected_bitlinear_types)} "
+                f"BitLinear layers, "
+                f"but found {bitlinear_index}."
+            )
+
+        print(
+            "PASS: BitLinear mixed-precision "
+            "configuration is correct."
+        )
 
     # ============================================================
     # Export
