@@ -195,7 +195,7 @@ if __name__ == "__main__":
     )
 
     model.load_state_dict(
-    torch.load(
+        torch.load(
             model_path,
             map_location=torch.device("cpu")
         )
