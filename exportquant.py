@@ -6,18 +6,17 @@ import yaml
 import numpy as np
 
 import torch
-import torch.nn as nn
 from torchvision import datasets, transforms
 
-from BitNetMCU import QuantizedModel, BitLinear, BitConv2d, Activation
+from BitNetMCU import QuantizedModel
 
-try:
-    import importlib
-except Exception:
-    importlib = None
 
+# ================================================================
+# Run name
+# ================================================================
 
 def create_run_name(hyperparameters):
+
     runname = (
         hyperparameters["runtag"]
         + "_"
@@ -36,66 +35,331 @@ def create_run_name(hyperparameters):
     )
 
     hyperparameters["runname"] = runname
+
     return runname
 
 
-def make_bitlinear(in_features, out_features, QuantType, NormType, WScale):
-    try:
-        return BitLinear(
-            in_features,
-            out_features,
-            QuantType=QuantType,
-            NormType=NormType,
-            WScale=WScale,
-        )
-    except TypeError:
-        try:
-            return BitLinear(
-                in_features,
-                out_features,
-                QuantType,
-                NormType,
-                WScale,
-            )
-        except TypeError:
-            print("Warning: BitLinear failed. Falling back to nn.Linear.")
-            return nn.Linear(in_features, out_features)
-
+# ================================================================
+# Load model
+# ================================================================
 
 def load_model(model_name, params):
-    """
-    Create the model using the same parameters used during training.
-    """
 
-    if importlib is None:
-        raise ValueError("Cannot import models.py")
+    import importlib
 
-    try:
-        module = importlib.import_module("models")
-        model_class = getattr(module, model_name)
+    module = importlib.import_module("models")
+    model_class = getattr(module, model_name)
 
-        kwargs = dict(
-            network_width1=params["network_width1"],
-            network_width2=params["network_width2"],
-            network_width3=params["network_width3"],
-            QuantType=params["QuantType"],
-            NormType=params["NormType"],
-            WScale=params["WScale"],
+    kwargs = {
+        "network_width1": params["network_width1"],
+        "network_width2": params["network_width2"],
+        "network_width3": params["network_width3"],
+        "QuantType": params["QuantType"],
+        "NormType": params["NormType"],
+        "WScale": params["WScale"],
+    }
+
+    if "cnn_width" in params:
+        kwargs["cnn_width"] = params["cnn_width"]
+
+    if "num_classes" in params:
+        kwargs["num_classes"] = params["num_classes"]
+
+    return model_class(**kwargs)
+
+
+# ================================================================
+# Evaluate original PyTorch model
+# ================================================================
+
+def evaluate_model(model, test_data, device):
+
+    model.eval()
+
+    correct = 0
+    total = 0
+
+    predictions = []
+    labels_list = []
+
+    with torch.no_grad():
+
+        for image, label in test_data:
+
+            image = image.unsqueeze(0).to(device)
+
+            output = model(image)
+
+            prediction = int(torch.argmax(output, dim=1).item())
+
+            predictions.append(prediction)
+            labels_list.append(int(label))
+
+            if prediction == label:
+                correct += 1
+
+            total += 1
+
+    accuracy = 100.0 * correct / total
+
+    return accuracy, predictions, labels_list
+
+
+# ================================================================
+# Encode weights
+#
+# IMPORTANT:
+# This keeps the BitNetMCU encoding used by your original
+# exporter. We are NOT changing the C/FPGA weight format here.
+# ================================================================
+
+def encode_linear_weights(weights, quantization_type, data_type):
+
+    weights = np.asarray(weights)
+
+    # ------------------------------------------------------------
+    # Binary
+    # ------------------------------------------------------------
+
+    if quantization_type in ("Binary", "BinaryBalanced"):
+
+        encoded_weights = np.where(
+            weights < 0,
+            0,
+            1
+        ).astype(data_type)
+
+        quant_id = 1
+
+    # ------------------------------------------------------------
+    # 2-bit symmetric
+    # ------------------------------------------------------------
+
+    elif quantization_type == "2bitsym":
+
+        magnitude = np.floor(
+            np.abs(weights)
+        ).astype(data_type)
+
+        sign = (
+            (weights < 0)
+            .astype(data_type)
+            << 1
         )
 
-        if "cnn_width" in params:
-            kwargs["cnn_width"] = params["cnn_width"]
+        encoded_weights = sign | magnitude
 
-        if "num_classes" in params:
-            kwargs["num_classes"] = params["num_classes"]
+        quant_id = 2
 
-        return model_class(**kwargs)
+    # ------------------------------------------------------------
+    # 4-bit symmetric
+    # ------------------------------------------------------------
 
-    except AttributeError:
+    elif quantization_type == "4bitsym":
+
+        magnitude = np.floor(
+            np.abs(weights)
+        ).astype(data_type)
+
+        sign = (
+            (weights < 0)
+            .astype(data_type)
+            << 3
+        )
+
+        encoded_weights = sign | magnitude
+
+        quant_id = 4
+
+    # ------------------------------------------------------------
+    # 4-bit
+    # ------------------------------------------------------------
+
+    elif quantization_type == "4bit":
+
+        # QuantizedModel should already have quantized values.
+        # Do NOT perform another floating-point quantization.
+        #
+        # We only convert the already-quantized values into
+        # their 4-bit storage representation.
+
+        rounded = np.asarray(weights)
+
+        # Verify that values are effectively integral.
+        if not np.allclose(
+            rounded,
+            np.round(rounded),
+            atol=1e-5
+        ):
+            raise ValueError(
+                "4bit weights contain non-integer values. "
+                "The exporter received values that appear to "
+                "still be floating-point/continuous."
+            )
+
+        rounded = np.round(rounded).astype(data_type)
+
+        # Keep lower 4 bits.
+        encoded_weights = rounded & 0xF
+
+        # BitNetMCU QuantID from original exporter.
+        quant_id = 8 + 4
+
+    # ------------------------------------------------------------
+    # 8-bit
+    # ------------------------------------------------------------
+
+    elif quantization_type == "8bit":
+
+        rounded = np.asarray(weights)
+
+        if not np.allclose(
+            rounded,
+            np.round(rounded),
+            atol=1e-5
+        ):
+            raise ValueError(
+                "8bit weights contain non-integer values."
+            )
+
+        encoded_weights = (
+            np.round(rounded)
+            .astype(data_type)
+            & 0xFF
+        )
+
+        quant_id = 8 + 8
+
+    # ------------------------------------------------------------
+    # NF4
+    # ------------------------------------------------------------
+
+    elif quantization_type == "NF4":
+
+        levels = np.array([
+            -1.0,
+            -0.6962,
+            -0.5251,
+            -0.3949,
+            -0.2844,
+            -0.1848,
+            -0.0911,
+             0.0,
+             0.0796,
+             0.1609,
+             0.2461,
+             0.3379,
+             0.4407,
+             0.5626,
+             0.7230,
+             1.0,
+        ])
+
+        encoded_weights = np.argmin(
+            np.abs(
+                weights[:, :, np.newaxis]
+                - levels
+            ),
+            axis=2
+        ).astype(data_type)
+
+        quant_id = 32 + 4
+
+    # ------------------------------------------------------------
+    # FP130
+    # ------------------------------------------------------------
+
+    elif quantization_type == "FP130":
+
+        abs_weights = np.abs(weights)
+
+        encoded_weights = (
+            (
+                (weights < 0)
+                .astype(data_type)
+                << 3
+            )
+            |
+            np.floor(
+                np.log2(
+                    np.maximum(abs_weights, 1e-12)
+                )
+            ).astype(data_type)
+        )
+
+        quant_id = 16 + 4
+
+    else:
+
         raise ValueError(
-            f"Model {model_name} not found in models.py or exportquant.py"
+            f"Unsupported linear quantization type: "
+            f"{quantization_type}"
         )
 
+    return encoded_weights, quant_id
+
+
+# ================================================================
+# Pack weights into 32-bit words
+# ================================================================
+
+def pack_weights_32bit(encoded_weights, bpw):
+
+    if bpw <= 0:
+        raise ValueError(
+            f"Invalid bits-per-weight: {bpw}"
+        )
+
+    if 32 % bpw != 0:
+        raise ValueError(
+            f"Bits-per-weight {bpw} does not divide "
+            f"a 32-bit word."
+        )
+
+    weight_per_word = 32 // bpw
+
+    flat = np.asarray(
+        encoded_weights,
+        dtype=np.uint32
+    ).flatten()
+
+    if len(flat) % weight_per_word != 0:
+
+        raise ValueError(
+            f"Cannot pack {len(flat)} weights at "
+            f"{bpw} bits/weight."
+        )
+
+    reshaped = flat.reshape(
+        -1,
+        weight_per_word
+    )
+
+    packed = np.zeros(
+        reshaped.shape[0],
+        dtype=np.uint32
+    )
+
+    # First weight occupies the top bits.
+    for i in range(weight_per_word):
+
+        shift = (
+            32
+            - bpw
+            - i * bpw
+        )
+
+        packed |= (
+            reshaped[:, i]
+            << shift
+        )
+
+    return packed
+
+
+# ================================================================
+# Export header
+# ================================================================
 
 def export_to_hfile(
     quantized_model,
@@ -105,387 +369,232 @@ def export_to_hfile(
     input_dim=None,
     num_classes=None,
 ):
+
     if not quantized_model.quantized_model:
-        raise ValueError("quantized_model is empty or None")
+
+        raise ValueError(
+            "Quantized model is empty."
+        )
+
+    layers = quantized_model.quantized_model
+
+    # ------------------------------------------------------------
+    # Maximum activation/weight input size
+    # ------------------------------------------------------------
+
+    incoming_values = [
+        layer["incoming_weights"]
+        for layer in layers
+        if "incoming_weights" in layer
+    ]
+
+    if not incoming_values:
+        raise ValueError(
+            "No layers with incoming_weights found."
+        )
 
     max_n_activations = max(
-        [
-            layer["incoming_weights"]
-            for layer in quantized_model.quantized_model
-            if "incoming_weights" in layer
-        ]
+        incoming_values
     )
+
+    print()
+    print("=" * 60)
+    print("EXPORTING QUANTIZED MODEL")
+    print("=" * 60)
+
+    print(
+        f"Number of layers : {len(layers)}"
+    )
+
+    print(
+        f"Max activations  : {max_n_activations}"
+    )
+
+    print(
+        f"Quantized bits   : "
+        f"{quantized_model.totalbits()}"
+    )
+
+    print(
+        f"Quantized bytes  : "
+        f"{quantized_model.totalbits() / 8:.0f}"
+    )
+
+    print(
+        f"Quantized size   : "
+        f"{quantized_model.totalbits() / 8 / 1024:.4f} KB"
+    )
+
+    print("=" * 60)
 
     with open(filename, "w") as f:
 
-        f.write("// Automatically generated header file\n")
-        f.write(f"// Date: {datetime.now()}\n")
-        f.write(f"// Quantized model exported from {runname}.pth\n")
-        f.write("// Generated by exportquant.py\n\n")
+        f.write(
+            "// Automatically generated header file\n"
+        )
 
-        f.write("#include <stdint.h>\n\n")
+        f.write(
+            f"// Date: {datetime.now()}\n"
+        )
 
-        f.write("#ifndef BITNETMCU_MODEL_H\n")
-        f.write("#define BITNETMCU_MODEL_H\n\n")
+        f.write(
+            f"// Quantized model exported from "
+            f"{runname}.pth\n"
+        )
 
-        f.write("// Model class name\n")
-        f.write(f"#define MODEL_{modelname}\n\n")
+        f.write(
+            "// Generated by corrected exportquant.py\n\n"
+        )
+
+        f.write(
+            "#include <stdint.h>\n\n"
+        )
+
+        f.write(
+            "#ifndef BITNETMCU_MODEL_H\n"
+        )
+
+        f.write(
+            "#define BITNETMCU_MODEL_H\n\n"
+        )
+
+        f.write(
+            f"#define MODEL_{modelname}\n\n"
+        )
 
         if input_dim is not None:
-            f.write(f"#define MODEL_INPUT_DIM {input_dim}\n")
+
+            f.write(
+                f"#define MODEL_INPUT_DIM "
+                f"{input_dim}\n"
+            )
 
         if num_classes is not None:
-            f.write(f"#define MODEL_NUM_CLASSES {num_classes}\n\n")
+
+            f.write(
+                f"#define MODEL_NUM_CLASSES "
+                f"{num_classes}\n\n"
+            )
 
         f.write(
-            f"#define NUM_LAYERS {len(quantized_model.quantized_model)}\n"
+            f"#define NUM_LAYERS "
+            f"{len(layers)}\n"
         )
+
         f.write(
-            f"#define MAX_N_ACTIVATIONS {max_n_activations}\n\n"
+            f"#define MAX_N_ACTIVATIONS "
+            f"{max_n_activations}\n\n"
         )
 
-        for layer_info in quantized_model.quantized_model:
+        # ========================================================
+        # Layers
+        # ========================================================
 
-            layer = f'L{layer_info["layer_order"]}'
+        for layer_info in layers:
 
-            # ============================================================
+            layer = (
+                f'L{layer_info["layer_order"]}'
+            )
+
+            layer_type = (
+                layer_info["layer_type"]
+            )
+
+            print()
+            print(
+                f"Exporting {layer}: "
+                f"{layer_type}"
+            )
+
+            # ====================================================
             # BitLinear
-            # ============================================================
+            # ====================================================
 
-            if layer_info["layer_type"] == "BitLinear":
+            if layer_type == "BitLinear":
 
-                incoming_weights = layer_info["incoming_weights"]
-                outgoing_weights = layer_info["outgoing_weights"]
-                bpw = layer_info["bpw"]
+                incoming_weights = int(
+                    layer_info["incoming_weights"]
+                )
 
-                weights = np.array(
+                outgoing_weights = int(
+                    layer_info["outgoing_weights"]
+                )
+
+                bpw = int(
+                    layer_info["bpw"]
+                )
+
+                weights = np.asarray(
                     layer_info["quantized_weights"]
                 )
 
-                quantization_type = layer_info[
-                    "quantization_type"
-                ]
-
-                if (bpw * incoming_weights % 32) != 0:
-                    raise ValueError(
-                        "Size mismatch: incoming weights must pack "
-                        "to 32-bit boundary. "
-                        f"Layer={layer}, "
-                        f"incoming={incoming_weights}, "
-                        f"bpw={bpw}, "
-                        f"bits={bpw * incoming_weights}."
-                    )
+                quantization_type = (
+                    layer_info["quantization_type"]
+                )
 
                 print(
-                    f"Layer: {layer} "
-                    f"Quantization type: <{quantization_type}>, "
-                    f"Bits per weight: {bpw}, "
-                    f"Incoming: {incoming_weights}, "
-                    f"Outgoing: {outgoing_weights}"
+                    f"  QuantType : "
+                    f"{quantization_type}"
                 )
 
-                data_type = np.uint32
-
-                # --------------------------------------------------------
-                # Binary
-                # --------------------------------------------------------
-
-                if quantization_type in (
-                    "Binary",
-                    "BinaryBalanced",
-                ):
-
-                    encoded_weights = np.where(
-                        weights < 0,
-                        0,
-                        1,
-                    ).astype(data_type)
-
-                    QuantID = 1
-
-                # --------------------------------------------------------
-                # 2-bit symmetric
-                # --------------------------------------------------------
-
-                elif quantization_type == "2bitsym":
-
-                    encoded_weights = (
-                        (weights < 0).astype(data_type) << 1
-                    ) | (
-                        np.floor(
-                            np.abs(weights)
-                        ).astype(data_type)
-                    )
-
-                    QuantID = 2
-
-                # --------------------------------------------------------
-                # 4-bit symmetric
-                # --------------------------------------------------------
-
-                elif quantization_type == "4bitsym":
-
-                    encoded_weights = (
-                        (weights < 0).astype(data_type) << 3
-                    ) | (
-                        np.floor(
-                            np.abs(weights)
-                        ).astype(data_type)
-                    )
-
-                    QuantID = 4
-
-                # --------------------------------------------------------
-                # 4-bit
-                # --------------------------------------------------------
-
-                elif quantization_type == "4bit":
-
-                    encoded_weights = (
-                        np.floor(weights).astype(data_type)
-                        & 15
-                    )
-
-                    QuantID = 8 + 4
-
-                # --------------------------------------------------------
-                # 8-bit
-                # --------------------------------------------------------
-
-                elif quantization_type == "8bit":
-
-                    encoded_weights = (
-                        np.floor(weights).astype(data_type)
-                        & 255
-                    )
-
-                    QuantID = 8 + 8
-
-                # --------------------------------------------------------
-                # NF4
-                # --------------------------------------------------------
-
-                elif quantization_type == "NF4":
-
-                    levels = np.array(
-                        [
-                            -1.0,
-                            -0.6962,
-                            -0.5251,
-                            -0.3949,
-                            -0.2844,
-                            -0.1848,
-                            -0.0911,
-                            0.0,
-                            0.0796,
-                            0.1609,
-                            0.2461,
-                            0.3379,
-                            0.4407,
-                            0.5626,
-                            0.723,
-                            1.0,
-                        ]
-                    )
-
-                    encoded_weights = np.argmin(
-                        np.abs(
-                            weights[:, :, np.newaxis]
-                            - levels
-                        ),
-                        axis=2,
-                    )
-
-                    QuantID = 32 + 4
-
-                # --------------------------------------------------------
-                # FP130
-                # --------------------------------------------------------
-
-                elif quantization_type == "FP130":
-
-                    encoded_weights = (
-                        (weights < 0).astype(data_type) << 3
-                    ) | (
-                        np.floor(
-                            np.log2(
-                                np.abs(weights)
-                            )
-                        ).astype(data_type)
-                    )
-
-                    QuantID = 16 + 4
-
-                # --------------------------------------------------------
-                # Ternary
-                # --------------------------------------------------------
-
-                elif quantization_type == "Ternary":
-
-                    n_outputs, n_inputs = weights.shape
-
-                    if n_inputs % 10 != 0:
-
-                        pad_size = 10 - (
-                            n_inputs % 10
-                        )
-
-                        print(
-                            f"WARNING: Ternary layer {layer} "
-                            f"has {n_inputs} inputs, "
-                            f"padding with {pad_size} zeros."
-                        )
-
-                        weights = np.pad(
-                            weights,
-                            (
-                                (0, 0),
-                                (0, pad_size),
-                            ),
-                            mode="constant",
-                            constant_values=0,
-                        )
-
-                        n_inputs = weights.shape[1]
-
-                    trit_values = np.where(
-                        weights == 1,
-                        0,
-                        np.where(
-                            weights == -1,
-                            1,
-                            2,
-                        ),
-                    ).astype(np.uint32)
-
-                    packed_row_size = n_inputs // 10
-
-                    packed_weights = np.zeros(
-                        (
-                            n_outputs,
-                            packed_row_size,
-                        ),
-                        dtype=np.uint16,
-                    )
-
-                    for row in range(n_outputs):
-
-                        for word_idx in range(
-                            packed_row_size
-                        ):
-
-                            start = word_idx * 10
-
-                            chunk = trit_values[
-                                row,
-                                start:start + 10,
-                            ]
-
-                            value = 0
-
-                            for t in range(10):
-                                value = (
-                                    value * 3
-                                    + chunk[t]
-                                )
-
-                            packed = (
-                                value * 65536
-                                + 59048
-                            ) // 59049
-
-                            packed_weights[
-                                row,
-                                word_idx
-                            ] = packed
-
-                    QuantID = 64
-
-                    f.write(
-                        f"// Layer: {layer}\n"
-                    )
-
-                    f.write(
-                        f"// QuantType: "
-                        f"{quantization_type}\n"
-                    )
-
-                    f.write(
-                        f"#define {layer}_active\n"
-                    )
-
-                    f.write(
-                        f"#define {layer}_bitperweight "
-                        f"{QuantID}\n"
-                    )
-
-                    f.write(
-                        f"#define {layer}_incoming_weights "
-                        f"{n_inputs}\n"
-                    )
-
-                    f.write(
-                        f"#define {layer}_outgoing_weights "
-                        f"{outgoing_weights}\n"
-                    )
-
-                    f.write(
-                        f"const uint16_t "
-                        f"{layer}_weights[] = {{"
-                    )
-
-                    for i, data in enumerate(
-                        packed_weights.flatten()
-                    ):
-
-                        if i % 10 == 0:
-                            f.write("\n\t")
-
-                        f.write(
-                            f"0x{data:04x},"
-                        )
-
-                    f.write("\n};\n\n")
-
-                    continue
-
-                else:
-
-                    print(
-                        f"Skipping layer {layer}. "
-                        f"Unsupported quantization type: "
-                        f"{quantization_type}"
-                    )
-
-                    continue
-
-                # --------------------------------------------------------
-                # Pack weights into 32-bit words
-                # --------------------------------------------------------
-
-                weight_per_word = 32 // bpw
-
-                reshaped_array = encoded_weights.reshape(
-                    -1,
-                    weight_per_word,
+                print(
+                    f"  Shape     : "
+                    f"{weights.shape}"
                 )
 
-                bit_positions = (
-                    32
-                    - bpw
-                    - np.arange(
-                        weight_per_word,
-                        dtype=data_type,
-                    ) * bpw
+                print(
+                    f"  BPW       : {bpw}"
                 )
 
-                packed_weights = np.bitwise_or.reduce(
-                    reshaped_array << bit_positions,
-                    axis=1,
-                ).view(data_type)
+                print(
+                    f"  Range     : "
+                    f"{weights.min()} "
+                    f"to {weights.max()}"
+                )
+
+                expected_shape = (
+                    outgoing_weights,
+                    incoming_weights
+                )
+
+                if weights.shape != expected_shape:
+
+                    raise ValueError(
+                        f"{layer}: weight shape "
+                        f"{weights.shape} does not match "
+                        f"expected "
+                        f"{expected_shape}"
+                    )
+
+                if (
+                    bpw * incoming_weights
+                ) % 32 != 0:
+
+                    raise ValueError(
+                        f"{layer}: incoming weights "
+                        f"cannot be packed into 32-bit "
+                        f"words."
+                    )
+
+                encoded_weights, quant_id = (
+                    encode_linear_weights(
+                        weights,
+                        quantization_type,
+                        np.uint32
+                    )
+                )
+
+                packed_weights = pack_weights_32bit(
+                    encoded_weights,
+                    bpw
+                )
 
                 f.write(
                     f"// Layer: {layer}\n"
+                )
+
+                f.write(
+                    f"// Layer type: BitLinear\n"
                 )
 
                 f.write(
@@ -499,7 +608,7 @@ def export_to_hfile(
 
                 f.write(
                     f"#define {layer}_bitperweight "
-                    f"{QuantID}\n"
+                    f"{quant_id}\n"
                 )
 
                 f.write(
@@ -518,66 +627,60 @@ def export_to_hfile(
                 )
 
                 for i, data in enumerate(
-                    packed_weights.flatten()
+                    packed_weights
                 ):
 
-                    if i & 7 == 0:
-                        f.write("\n\t")
+                    if i % 8 == 0:
+
+                        f.write(
+                            "\n\t"
+                        )
 
                     f.write(
-                        f"0x{data:08x},"
+                        f"0x{int(data):08x},"
                     )
 
                 f.write(
-                    "\n}; "
-                    "// first channel is topmost bit\n\n"
+                    "\n};\n\n"
                 )
 
-            # ============================================================
+            # ====================================================
             # BitConv2d
-            # ============================================================
+            # ====================================================
 
-            elif layer_info["layer_type"] == "BitConv2d":
+            elif layer_type == "BitConv2d":
 
-                in_channels = layer_info[
-                    "in_channels"
-                ]
-
-                out_channels = layer_info[
-                    "out_channels"
-                ]
-
-                groups = layer_info["groups"]
-
-                kernel_size = layer_info[
-                    "kernel_size"
-                ][0]
-
-                bpw = layer_info["bpw"]
-
-                weights = np.array(
-                    layer_info[
-                        "quantized_weights"
-                    ]
+                in_channels = int(
+                    layer_info["in_channels"]
                 )
 
-                # --------------------------------------------------------
-                # Spatial dimensions
-                #
-                # Current CNN architecture:
-                #
-                # Input: 32x32
-                #
-                # L2 Conv3x3 -> 30x30
-                # L4 Conv3x3 -> 28x28
-                # L6 MaxPool2x2 -> 14x14
-                # L7 Conv3x3 -> 12x12
-                # L9 MaxPool2x2 -> 6x6
-                # --------------------------------------------------------
+                out_channels = int(
+                    layer_info["out_channels"]
+                )
 
-                layer_order = layer_info[
-                    "layer_order"
-                ]
+                groups = int(
+                    layer_info["groups"]
+                )
+
+                kernel_size = int(
+                    layer_info["kernel_size"][0]
+                )
+
+                bpw = int(
+                    layer_info["bpw"]
+                )
+
+                weights = np.asarray(
+                    layer_info["quantized_weights"]
+                )
+
+                layer_order = int(
+                    layer_info["layer_order"]
+                )
+
+                # ------------------------------------------------
+                # CNN dimensions
+                # ------------------------------------------------
 
                 if layer_order == 2:
 
@@ -606,23 +709,46 @@ def export_to_hfile(
                 else:
 
                     raise ValueError(
-                        "Unexpected BitConv2d layer order "
-                        f"{layer_order}. "
-                        "Expected 2, 4, or 7 for "
-                        "the current CNNMNIST 32x32 model."
+                        f"Unexpected BitConv2d "
+                        f"layer order {layer_order}. "
+                        f"Expected 2, 4, or 7."
                     )
 
+                print(
+                    f"  Shape     : "
+                    f"{weights.shape}"
+                )
+
+                print(
+                    f"  BPW       : {bpw}"
+                )
+
+                print(
+                    f"  Range     : "
+                    f"{weights.min()} "
+                    f"to {weights.max()}"
+                )
+
+                # ------------------------------------------------
+                # Header
+                # ------------------------------------------------
+
                 f.write(
-                    f"// Layer: {layer} "
-                    f"Convolutional\n"
+                    f"// Layer: {layer}\n"
                 )
 
                 f.write(
-                    f"#define {layer}_active\n"
+                    "// Layer type: BitConv2d\n"
                 )
 
                 f.write(
-                    f"#define {layer}_type BitConv2d\n"
+                    "#define "
+                    f"{layer}_active\n"
+                )
+
+                f.write(
+                    f"#define {layer}_type "
+                    f"BitConv2d\n"
                 )
 
                 f.write(
@@ -688,34 +814,32 @@ def export_to_hfile(
                 ):
 
                     if i % 16 == 0:
-                        f.write("\n\t")
+
+                        f.write(
+                            "\n\t"
+                        )
 
                     f.write(
                         f"{int(data)},"
                     )
 
-                f.write("\n};\n\n")
+                f.write(
+                    "\n};\n\n"
+                )
 
-            # ============================================================
+            # ====================================================
             # MaxPool2d
-            # ============================================================
+            # ====================================================
 
-            elif layer_info["layer_type"] == "MaxPool2d":
+            elif layer_type == "MaxPool2d":
 
-                pool_size = layer_info[
-                    "kernel_size"
-                ]
+                pool_size = int(
+                    layer_info["kernel_size"]
+                )
 
-                layer_order = layer_info[
-                    "layer_order"
-                ]
-
-                # --------------------------------------------------------
-                # Current CNN:
-                #
-                # L6: 28x28 -> 14x14
-                # L9: 12x12 -> 6x6
-                # --------------------------------------------------------
+                layer_order = int(
+                    layer_info["layer_order"]
+                )
 
                 if layer_order == 6:
 
@@ -736,18 +860,26 @@ def export_to_hfile(
                 else:
 
                     raise ValueError(
-                        "Unexpected MaxPool2d layer order "
-                        f"{layer_order}. "
-                        "Expected 6 or 9 for "
-                        "the current CNNMNIST 32x32 model."
+                        f"Unexpected MaxPool2d "
+                        f"layer order {layer_order}. "
+                        f"Expected 6 or 9."
                     )
+
+                f.write(
+                    f"// Layer: {layer}\n"
+                )
+
+                f.write(
+                    "// Layer type: MaxPool2d\n"
+                )
 
                 f.write(
                     f"#define {layer}_active\n"
                 )
 
                 f.write(
-                    f"#define {layer}_type MaxPool2d\n"
+                    f"#define {layer}_type "
+                    f"MaxPool2d\n"
                 )
 
                 f.write(
@@ -775,7 +907,25 @@ def export_to_hfile(
                     f"{outgoing_y}\n\n"
                 )
 
-        f.write("#endif\n")
+            # ====================================================
+            # Unknown layer
+            # ====================================================
+
+            else:
+
+                raise ValueError(
+                    f"Unsupported layer type: "
+                    f"{layer_type}"
+                )
+
+        f.write(
+            "#endif\n"
+        )
+
+    print()
+    print(
+        f"Header successfully written: {filename}"
+    )
 
 
 # ================================================================
@@ -785,50 +935,72 @@ def export_to_hfile(
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
-        description="Export quantized BitNetMCU model"
+        description=(
+            "Export BitNetMCU quantized FACE CNN "
+            "model to C header"
+        )
     )
 
     parser.add_argument(
         "--params",
         type=str,
-        help="Name of parameter YAML file",
         default="trainingparameters.yaml",
+        help="YAML parameter file"
+    )
+
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default="final",
+        choices=["final", "best"],
+        help=(
+            "Checkpoint to export. "
+            "Default: final"
+        )
     )
 
     args = parser.parse_args()
 
-    paramname = args.params
+    # ============================================================
+    # Parameters
+    # ============================================================
 
     print(
-        f"Load parameters from file: {paramname}"
+        f"Loading parameters from: "
+        f"{args.params}"
     )
 
-    with open(paramname) as f:
+    with open(args.params) as f:
+
         hyperparameters = yaml.safe_load(f)
 
     hyperparameters.setdefault(
         "augmentation",
-        False,
+        False
     )
 
     hyperparameters.setdefault(
         "network_width3",
-        0,
+        0
     )
 
     hyperparameters.setdefault(
         "dropout",
-        0.0,
+        0.0
     )
 
     runname = create_run_name(
         hyperparameters
     )
 
+    print()
     print(
-        "Run name:",
-        runname
+        f"Run name: {runname}"
     )
+
+    # ============================================================
+    # Device
+    # ============================================================
 
     device = torch.device(
         "cuda"
@@ -837,24 +1009,24 @@ if __name__ == "__main__":
     )
 
     print(
-        "Device:",
-        device
+        f"Device: {device}"
     )
 
-    # ================================================================
-    # FACE dataset
-    # ================================================================
+    # ============================================================
+    # Dataset
+    # ============================================================
 
-    dataset_name = hyperparameters.get(
-        "dataset",
-        "FACE",
-    ).upper()
+    dataset_name = (
+        hyperparameters
+        .get("dataset", "FACE")
+        .upper()
+    )
 
     if dataset_name != "FACE":
 
         raise ValueError(
-            "This exportquant.py is prepared "
-            "for dataset: FACE only."
+            "This exporter is prepared "
+            "for FACE dataset only."
         )
 
     data_root = hyperparameters[
@@ -863,31 +1035,29 @@ if __name__ == "__main__":
 
     test_dir = os.path.join(
         data_root,
-        hyperparameters["test_folder"],
+        hyperparameters["test_folder"]
     )
 
-    transform = transforms.Compose(
-        [
-            transforms.Grayscale(
-                num_output_channels=1
-            ),
+    transform = transforms.Compose([
+        transforms.Grayscale(
+            num_output_channels=1
+        ),
 
-            transforms.Resize(
-                (32, 32)
-            ),
+        transforms.Resize(
+            (32, 32)
+        ),
 
-            transforms.ToTensor(),
+        transforms.ToTensor(),
 
-            transforms.Normalize(
-                (0.5,),
-                (0.5,),
-            ),
-        ]
-    )
+        transforms.Normalize(
+            (0.5,),
+            (0.5,)
+        ),
+    ])
 
     test_data = datasets.ImageFolder(
         test_dir,
-        transform=transform,
+        transform=transform
     )
 
     num_classes = len(
@@ -896,20 +1066,29 @@ if __name__ == "__main__":
 
     input_dim = 32 * 32
 
+    print()
+    print("=" * 60)
+    print("FACE DATASET")
+    print("=" * 60)
+
     print(
-        "Test samples:",
-        len(test_data)
+        f"Test directory : {test_dir}"
     )
 
     print(
-        "Test classes:",
-        test_data.classes
+        f"Test samples   : {len(test_data)}"
     )
 
     print(
-        "Input size:",
-        input_dim
+        f"Number classes : {num_classes}"
     )
+
+    print(
+        f"Class mapping  : "
+        f"{test_data.class_to_idx}"
+    )
+
+    print("=" * 60)
 
     hyperparameters[
         "num_classes"
@@ -919,14 +1098,18 @@ if __name__ == "__main__":
         "input_dim"
     ] = input_dim
 
-    # ================================================================
+    # ============================================================
     # Create model
-    # ================================================================
+    # ============================================================
 
     model = load_model(
         hyperparameters["model"],
-        hyperparameters,
+        hyperparameters
     ).to(device)
+
+    # ============================================================
+    # Check model output
+    # ============================================================
 
     if hyperparameters["model"] == "CNNMNIST":
 
@@ -935,14 +1118,16 @@ if __name__ == "__main__":
             1,
             32,
             32,
-        ).to(device)
+            device=device
+        )
 
     else:
 
         dummy_input = torch.randn(
             1,
             input_dim,
-        ).to(device)
+            device=device
+        )
 
     with torch.no_grad():
 
@@ -950,109 +1135,260 @@ if __name__ == "__main__":
             dummy_input
         )
 
+    print()
     print(
-        "Model output shape:",
-        dummy_output.shape
+        f"Model input shape  : "
+        f"{dummy_input.shape}"
     )
 
     print(
-        "Expected classes:",
-        num_classes
+        f"Model output shape : "
+        f"{dummy_output.shape}"
     )
 
-    if dummy_output.shape[1] != num_classes:
+    if (
+        dummy_output.ndim != 2
+        or dummy_output.shape[1]
+        != num_classes
+    ):
 
         raise ValueError(
-            f"Model output mismatch. "
-            f"Model outputs "
-            f"{dummy_output.shape[1]} classes, "
-            f"but dataset needs "
-            f"{num_classes} classes."
+            "Model output does not match "
+            f"the {num_classes} classes."
         )
 
-    # ================================================================
-    # Load best checkpoint
-    # ================================================================
+    # ============================================================
+    # Select checkpoint
+    # ============================================================
 
-    model_path = (
+    final_checkpoint = (
         f"modeldata/{runname}.pth"
     )
 
-    best_model_path = (
+    best_checkpoint = (
         f"modeldata/{runname}_best.pth"
     )
 
-    if os.path.exists(
-        best_model_path
-    ):
+    if args.checkpoint == "best":
 
-        model_path = best_model_path
+        model_path = best_checkpoint
 
-    if not os.path.exists(
-        model_path
-    ):
+    else:
+
+        model_path = final_checkpoint
+
+    if not os.path.exists(model_path):
 
         raise FileNotFoundError(
-            f"Cannot find model checkpoint:\n"
-            f"{model_path}\n"
-            f"Expected either:\n"
-            f"modeldata/{runname}.pth\n"
-            f"or\n"
-            f"modeldata/{runname}_best.pth"
+            f"Checkpoint not found:\n"
+            f"{model_path}\n\n"
+            f"Final checkpoint:\n"
+            f"{final_checkpoint}\n\n"
+            f"Best checkpoint:\n"
+            f"{best_checkpoint}"
         )
 
-    model.load_state_dict(
-        torch.load(
-            model_path,
-            map_location=torch.device(
-                "cpu"
-            ),
-        )
+    # ============================================================
+    # Load checkpoint
+    # ============================================================
+
+    print()
+    print("=" * 60)
+    print("LOADING CHECKPOINT")
+    print("=" * 60)
+
+    print(
+        f"Checkpoint mode : "
+        f"{args.checkpoint}"
     )
 
     print(
-        "Loaded checkpoint:",
-        model_path
+        f"Checkpoint path : "
+        f"{model_path}"
+    )
+
+    checkpoint = torch.load(
+        model_path,
+        map_location="cpu"
+    )
+
+    # Handle either a raw state_dict or a
+    # checkpoint dictionary.
+
+    if isinstance(checkpoint, dict):
+
+        if "state_dict" in checkpoint:
+
+            state_dict = checkpoint[
+                "state_dict"
+            ]
+
+        elif "model_state_dict" in checkpoint:
+
+            state_dict = checkpoint[
+                "model_state_dict"
+            ]
+
+        else:
+
+            state_dict = checkpoint
+
+    else:
+
+        state_dict = checkpoint
+
+    model.load_state_dict(
+        state_dict,
+        strict=True
     )
 
     model = model.to(device)
-
     model.eval()
 
-    # ================================================================
-    # Quantize
-    # ================================================================
+    print(
+        "Checkpoint loaded successfully."
+    )
+
+    # ============================================================
+    # IMPORTANT:
+    # Test the ORIGINAL PyTorch model BEFORE quantization.
+    # ============================================================
+
+    print()
+    print("=" * 60)
+    print("ORIGINAL PYTORCH MODEL")
+    print("=" * 60)
+
+    original_accuracy, _, _ = (
+        evaluate_model(
+            model,
+            test_data,
+            device
+        )
+    )
 
     print(
-        "Quantizing model..."
+        f"Original model accuracy: "
+        f"{original_accuracy:.2f}%"
     )
+
+    print(
+        "This is the reference accuracy "
+        "for this exact checkpoint and "
+        "this exact test set."
+    )
+
+    # ============================================================
+    # Quantize
+    # ============================================================
+
+    print()
+    print("=" * 60)
+    print("CREATING BITNETMCU QUANTIZED MODEL")
+    print("=" * 60)
 
     quantized_model = QuantizedModel(
         model
     )
 
-    print(
-        f"Total number of bits: "
-        f"{quantized_model.totalbits()}"
+    total_bits = (
+        quantized_model.totalbits()
+    )
+
+    total_bytes = (
+        total_bits / 8
+    )
+
+    total_kb = (
+        total_bytes / 1024
     )
 
     print(
-        f"Total size: "
-        f"{quantized_model.totalbits() / 8 / 1024:.4f} KB"
+        f"Total bits  : {total_bits}"
     )
 
-    # ================================================================
+    print(
+        f"Total bytes : {total_bytes:.0f}"
+    )
+
+    print(
+        f"Total KB    : {total_kb:.4f}"
+    )
+
+    # ============================================================
+    # Verify expected 4-bit configuration
+    # ============================================================
+
+    requested_quant_type = (
+        hyperparameters["QuantType"]
+    )
+
+    print()
+    print(
+        f"Requested QuantType: "
+        f"{requested_quant_type}"
+    )
+
+    if requested_quant_type == "4bit":
+
+        print(
+            "4-bit export checks enabled."
+        )
+
+        for layer_info in (
+            quantized_model.quantized_model
+        ):
+
+            if (
+                layer_info["layer_type"]
+                == "BitLinear"
+            ):
+
+                qtype = (
+                    layer_info[
+                        "quantization_type"
+                    ]
+                )
+
+                bpw = int(
+                    layer_info["bpw"]
+                )
+
+                if qtype != "4bit":
+
+                    raise ValueError(
+                        "Expected BitLinear "
+                        f"4bit layer but found "
+                        f"{qtype}."
+                    )
+
+                if bpw != 4:
+
+                    raise ValueError(
+                        f"Expected 4 bits/weight "
+                        f"but layer has "
+                        f"{bpw}."
+                    )
+
+    # ============================================================
     # Export
-    # ================================================================
+    # ============================================================
 
-    export_header = hyperparameters.get(
-        "export_header",
-        "BitNetMCU_model.h",
+    export_header = (
+        hyperparameters.get(
+            "export_header",
+            "BitNetMCU_model.h"
+        )
     )
 
+    print()
+    print("=" * 60)
+    print("EXPORT")
+    print("=" * 60)
+
     print(
-        "Exporting model to header file:",
-        export_header
+        f"Output header: "
+        f"{export_header}"
     )
 
     export_to_hfile(
@@ -1066,10 +1402,49 @@ if __name__ == "__main__":
             == "CNNMNIST"
             else input_dim
         ),
-        num_classes=num_classes,
+        num_classes=num_classes
+    )
+
+    print()
+    print("=" * 60)
+    print("EXPORT COMPLETE")
+    print("=" * 60)
+
+    print(
+        f"Checkpoint : {model_path}"
     )
 
     print(
-        "Export done:",
-        export_header
+        f"Original accuracy : "
+        f"{original_accuracy:.2f}%"
     )
+
+    print(
+        f"Model size : "
+        f"{total_kb:.4f} KB"
+    )
+
+    print(
+        f"Header : "
+        f"{export_header}"
+    )
+
+    print()
+    print(
+        "IMPORTANT:"
+    )
+
+    print(
+        "The original PyTorch accuracy above "
+        "is the reference. If this accuracy "
+        "is already 53.33%, the export itself "
+        "cannot be blamed for that accuracy "
+        "drop."
+    )
+
+    print(
+        "Use --checkpoint best only when you "
+        "have verified that _best.pth contains "
+        "the intended 80% validation checkpoint."
+    )
+
