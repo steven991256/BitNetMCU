@@ -1342,7 +1342,7 @@ if __name__ == "__main__":
         # Classifier : 4bit    / 4 bits per weight
 
         expected_bitlinear_types = [
-            ("2bitsym", 2),
+            ("4bit", 4),
             ("4bit", 4),
             ("4bit", 4),
         ]
