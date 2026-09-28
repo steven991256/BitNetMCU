@@ -31,5 +31,5 @@ maxw_update_until_epoch: 80
 maxw_algo: octav
 maxw_quantscale: 0.25
 
-runtag: face32
+runtag: face32_fc1_4bit
 export_header: BitNetMCU_face32_model.h
