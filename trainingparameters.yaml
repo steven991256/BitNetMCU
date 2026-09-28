@@ -19,8 +19,8 @@ NormType: RMS
 WScale: PerTensor
 
 cnn_width: 64
-network_width1: 64
-network_width2: 32
+network_width1: 32
+network_width2: 16
 network_width3: 0
 
 augmentation: false
@@ -31,5 +31,5 @@ maxw_update_until_epoch: 80
 maxw_algo: octav
 maxw_quantscale: 0.25
 
-runtag: face32_fc1_4bit_aug
+runtag: face32_fc1_4bit_aug_tune2
 export_header: BitNetMCU_face32_model.h
