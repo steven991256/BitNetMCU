@@ -668,7 +668,7 @@ if __name__ == "__main__":
        transforms.Grayscale(num_output_channels=1),
        transforms.Resize((32, 32)),
        transforms.ToTensor(),
-       transforms.Normalize((0.5,), (0.5,))
+       transforms.Normalize((0.4326,), (0.1842,))
     ])
 
     train_data = datasets.ImageFolder(train_dir, transform=transform)
