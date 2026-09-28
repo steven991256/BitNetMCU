@@ -6,7 +6,7 @@ import torch
 from torchvision import datasets, transforms
 
 from models import CNNMNIST
-from BitNetMCU import QuantizedModel, inference_quantized
+from BitNetMCU import QuantizedModel
 
 
 # ============================================================
@@ -436,8 +436,7 @@ for i in range(len(test_data)):
         -1
     ).numpy()
 
-    prediction_output = inference_quantized(
-        quant_model,
+    prediction_output = quant_model.inference_quantized(
         image_flat
     )
 
