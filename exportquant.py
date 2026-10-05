@@ -10,6 +10,8 @@ from torchvision import datasets, transforms
 
 from BitNetMCU import QuantizedModel
 
+DATA_MEAN = 0.4326
+DATA_STD = 0.1842
 
 # ================================================================
 # Run name
@@ -1050,8 +1052,8 @@ if __name__ == "__main__":
         transforms.ToTensor(),
 
         transforms.Normalize(
-            (0.5,),
-            (0.5,)
+            (DATA_MEAN,),
+            (DATA_STD,)
         ),
     ])
 
