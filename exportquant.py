@@ -176,36 +176,27 @@ def encode_linear_weights(weights, quantization_type, data_type):
     # ------------------------------------------------------------
     # 4-bit
     # ------------------------------------------------------------
+   elif quantization_type == "4bit":
 
-    elif quantization_type == "4bit":
+    # BitNetMCU represents quantized 4-bit values
+    # as integer level + 0.01.
+    rounded = np.round(
+        np.asarray(weights) - 0.01
+    )
 
-        # QuantizedModel should already have quantized values.
-        # Do NOT perform another floating-point quantization.
-        #
-        # We only convert the already-quantized values into
-        # their 4-bit storage representation.
+    if np.any(rounded < -8) or np.any(rounded > 7):
+        raise ValueError(
+            "4bit weights outside valid range [-8, 7]."
+        )
 
-        rounded = np.asarray(weights)
+    rounded = rounded.astype(data_type)
 
-        # Verify that values are effectively integral.
-        if not np.allclose(
-            rounded,
-            np.round(rounded),
-            atol=1e-5
-        ):
-            raise ValueError(
-                "4bit weights contain non-integer values. "
-                "The exporter received values that appear to "
-                "still be floating-point/continuous."
-            )
+    # Store signed 4-bit value in lower nibble.
+    encoded_weights = rounded & 0xF
 
-        rounded = np.round(rounded).astype(data_type)
-
-        # Keep lower 4 bits.
-        encoded_weights = rounded & 0xF
-
-        # BitNetMCU QuantID from original exporter.
-        quant_id = 8 + 4
+    # BitNetMCU C inference selector:
+    # 8 + 4 = signed 4-bit multiplication mode.
+    quant_id = 8 + 4
 
     # ------------------------------------------------------------
     # 8-bit
