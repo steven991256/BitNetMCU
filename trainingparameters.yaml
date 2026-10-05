@@ -9,7 +9,7 @@ test_folder: test
 
 num_classes: 10
 
-num_epochs: 100
+num_epochs: 10
 batch_size: 32
 learning_rate: 0.001
 scheduler: Cosine
@@ -27,7 +27,7 @@ augmentation: false
 lambda_l1: 0.0
 prune_epoch: -1
 
-maxw_update_until_epoch: 80
+maxw_update_until_epoch: 8
 maxw_algo: octav
 maxw_quantscale: 0.25
 
